@@ -472,3 +472,203 @@ else:
                 
                 Target your content and campaigns according to where users are in their journey.
                 """)
+# Tab 2: Explore Clusters
+        with tab2:
+            st.markdown("### Explore Individual Clusters")
+            
+            # Cluster selector
+            cluster_options = []
+            for cluster_id in sorted(df['cluster_id'].unique()):
+                cluster_name = df[df['cluster_id'] == cluster_id]['cluster_name'].iloc[0]
+                count = len(df[df['cluster_id'] == cluster_id])
+                cluster_options.append(f"{cluster_name} ({count} keywords)")
+            
+            selected_cluster_option = st.selectbox("Select a cluster:", cluster_options)
+            
+            if selected_cluster_option:
+                # Extract cluster ID from the selected option
+                selected_cluster_id = df[df['cluster_name'] == selected_cluster_option.split(" (")[0]]['cluster_id'].iloc[0]
+                
+                # Get cluster info
+                cluster_df = df[df['cluster_id'] == selected_cluster_id]
+                cluster_name = cluster_df['cluster_name'].iloc[0]
+                cluster_desc = cluster_df['cluster_description'].iloc[0]
+                
+                # Display cluster info
+                st.markdown(f"## {cluster_name}")
+                st.markdown(f"**Description:** {cluster_desc}")
+                
+                # Intent information
+                if selected_cluster_id in cluster_intents:
+                    intent_data = cluster_intents[selected_cluster_id]
+                    primary_intent = intent_data['intent']['primary_intent']
+                    scores = intent_data['intent']['scores']
+                    evidence = intent_data['intent']['evidence']
+                    journey_phase = intent_data['journey_phase']
+                    
+                    # Format based on intent
+                    intent_class = ""
+                    if primary_intent == "Informational":
+                        intent_class = "intent-info"
+                    elif primary_intent == "Navigational":
+                        intent_class = "intent-nav"
+                    elif primary_intent == "Transactional":
+                        intent_class = "intent-trans"
+                    elif primary_intent == "Commercial":
+                        intent_class = "intent-comm"
+                    elif primary_intent == "Mixed Intent":
+                        intent_class = "intent-mixed"
+                    
+                    # Journey phase class
+                    journey_class = ""
+                    if "Early" in journey_phase:
+                        journey_class = "journey-early"
+                    elif "Middle" in journey_phase:
+                        journey_class = "journey-middle"
+                    elif "Late" in journey_phase:
+                        journey_class = "journey-late"
+                    
+                    # Create two columns for intent and journey
+                    intent_col1, intent_col2 = st.columns(2)
+                    
+                    with intent_col1:
+                        st.markdown(f"""
+                        <div class="intent-box {intent_class}">
+                        <strong>Primary Search Intent:</strong> {primary_intent}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Intent scores visualization
+                        fig = px.bar(
+                            x=list(scores.keys()),
+                            y=list(scores.values()),
+                            labels={'x': 'Intent Type', 'y': 'Score (%)'},
+                            title="Search Intent Distribution",
+                            color=list(scores.keys()),
+                            color_discrete_map={
+                                'Informational': '#2196f3',
+                                'Navigational': '#4caf50',
+                                'Transactional': '#ff9800',
+                                'Commercial': '#9c27b0'
+                            }
+                        )
+                        fig.update_layout(yaxis_range=[0, 100])
+                        st.plotly_chart(fig)
+                    
+                    with intent_col2:
+                        st.markdown(f"""
+                        <div class="journey-box {journey_class}">
+                        <strong>Customer Journey Phase:</strong> {journey_phase}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        st.markdown("### Content Recommendations")
+                        
+                        if primary_intent == "Informational":
+                            st.markdown("""
+                            **Recommended Content Types:**
+                            - How-to guides and tutorials
+                            - Explanatory blog posts
+                            - FAQ pages
+                            - Informational videos
+                            
+                            **Target:** Featured snippets, People Also Ask boxes
+                            """)
+                        elif primary_intent == "Commercial":
+                            st.markdown("""
+                            **Recommended Content Types:**
+                            - Product comparisons
+                            - Best-of lists
+                            - Detailed reviews
+                            - Buying guides
+                            
+                            **Target:** Rich results with review stars, comparison tables
+                            """)
+                        elif primary_intent == "Transactional":
+                            st.markdown("""
+                            **Recommended Content Types:**
+                            - Product/service pages
+                            - Landing pages with clear CTAs
+                            - Pricing pages
+                            - Special offers and deals
+                            
+                            **Target:** Shopping results, strong CTAs, conversion optimization
+                            """)
+                        elif primary_intent == "Navigational":
+                            st.markdown("""
+                            **Recommended Content Types:**
+                            - Brand/service landing pages
+                            - Contact and location pages
+                            - Login/account pages
+                            
+                            **Target:** Brand SERP features, site links
+                            """)
+                        else:
+                            st.markdown("""
+                            **Recommended Content Types:**
+                            - Mix of different content types
+                            - Focus on the strongest intent signals
+                            
+                            **Target:** Various SERP features depending on specific keywords
+                            """)
+                
+                # Examples
+                st.markdown("### Keywords in this Cluster")
+                show_all = st.checkbox("Show all keywords", value=False)
+                
+                if not show_all and selected_cluster_id in representative_keywords:
+                    st.write("Sample keywords from this cluster:")
+                    st.write(", ".join(representative_keywords[selected_cluster_id]))
+                    st.markdown(f"*Showing {len(representative_keywords[selected_cluster_id])} of {len(cluster_df)} keywords*")
+                else:
+                    st.dataframe(cluster_df[["keyword"]])
+
+        # Tab 3: Export Results
+        with tab3:
+            st.markdown("### Export Clustering Results")
+            
+            # Download full results
+            csv_data = df.to_csv(index=False)
+            st.download_button(
+                label="Download Full Results (CSV)",
+                data=csv_data,
+                file_name="semantic_keyword_clusters.csv",
+                mime="text/csv",
+                help="Download all keywords with cluster assignments"
+            )
+            
+            # Create a summary version
+            summary_df = df.groupby(['cluster_id', 'cluster_name', 'cluster_description']).size().reset_index(name='keyword_count')
+            
+            # Add primary intent and journey phase
+            summary_df['primary_intent'] = summary_df['cluster_id'].apply(
+                lambda x: cluster_intents.get(x, {}).get('intent', {}).get('primary_intent', 'Unknown')
+            )
+            
+            summary_df['journey_phase'] = summary_df['cluster_id'].apply(
+                lambda x: cluster_intents.get(x, {}).get('journey_phase', 'Unknown')
+            )
+            
+            st.markdown("### Clusters Summary")
+            st.dataframe(summary_df)
+            
+            summary_csv = summary_df.to_csv(index=False)
+            st.download_button(
+                label="Download Clusters Summary (CSV)",
+                data=summary_csv,
+                file_name="semantic_clusters_summary.csv",
+                mime="text/csv",
+                help="Download a summary of all clusters"
+            )
+            
+            # Reset button
+            if st.button("Start Over", use_container_width=True):
+                st.session_state['process_complete'] = False
+                st.session_state['clustering_results'] = None
+                st.session_state['cluster_names'] = {}
+                st.session_state['cluster_intents'] = {}
+                st.experimental_rerun()
+
+# Run the app
+if __name__ == "__main__":
+    main()
