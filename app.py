@@ -137,3 +137,103 @@ def calculate_api_cost(num_keywords, model="gpt-3.5-turbo", num_clusters=10):
         "naming_cost": naming_cost,
         "total_cost": total_cost
     }
+# Main application function
+def main():
+    # Header
+    st.markdown("<div class='main-header'>🔍 Semantic Keyword Clustering</div>", unsafe_allow_html=True)
+    st.markdown("""
+    This app clusters your keywords based on semantic similarity, helping you organize them for SEO and paid campaigns.
+    Upload a CSV with your keywords and discover meaningful groups to target more effectively.
+    """)
+
+    # Sidebar
+    with st.sidebar:
+        st.header("Configuration")
+        
+        # File upload
+        uploaded_file = st.file_uploader("Upload CSV with keywords", type=["csv"])
+        
+        # Sample data options
+        if uploaded_file is None:
+            st.markdown("### Sample Data")
+            use_sample = st.checkbox("Use sample data", value=False)
+            sample_type = st.radio(
+                "Sample type:", 
+                ["With header (like Keyword Planner)", "Without header (just keywords)"],
+                index=0
+            )
+        
+        # CSV format
+        st.markdown("### CSV Format")
+        csv_format = st.radio(
+            "Select CSV format",
+            ["With header (column names in first row)", "No header (just keywords)"],
+            index=0
+        )
+        
+        # Language selection
+        st.markdown("### Language")
+        selected_language_name = st.selectbox(
+            "Select language of keywords",
+            list(LANGUAGE_OPTIONS.keys()),
+            index=0
+        )
+        selected_language = LANGUAGE_OPTIONS[selected_language_name]
+        
+        # OpenAI API Key
+        st.markdown("### OpenAI API (Optional)")
+        openai_api_key = st.text_input(
+            "OpenAI API Key",
+            type="password",
+            help="If not provided, free SentenceTransformers will be used instead"
+        )
+        
+        # Clustering parameters
+        st.markdown("### Clustering Parameters")
+        num_clusters = st.slider(
+            "Number of clusters",
+            min_value=2,
+            max_value=50,
+            value=10,
+            help="How many keyword groups to create"
+        )
+        
+        # Advanced parameters
+        with st.expander("Advanced Parameters", expanded=False):
+            pca_variance = st.slider(
+                "PCA explained variance (%)",
+                min_value=60,
+                max_value=99,
+                value=95,
+                help="Higher keeps more information but higher dimensionality"
+            )
+            
+            openai_model = st.selectbox(
+                "OpenAI model for cluster naming",
+                ["gpt-3.5-turbo", "gpt-4"],
+                index=0,
+                help="GPT-4 gives better names but costs more"
+            )
+        
+        # Cost estimate
+        if openai_api_key:
+            with st.expander("💰 Cost Estimate"):
+                if uploaded_file:
+                    try:
+                        df_temp = pd.read_csv(uploaded_file)
+                        num_keywords_estimate = len(df_temp)
+                    except:
+                        num_keywords_estimate = 100
+                else:
+                    num_keywords_estimate = 10
+                
+                cost = calculate_api_cost(num_keywords_estimate, openai_model, num_clusters)
+                
+                st.markdown(f"""
+                **Estimated costs for {num_keywords_estimate} keywords:**
+                - Embedding: ${cost['embedding_cost']:.5f}
+                - Cluster naming: ${cost['naming_cost']:.5f}
+                - **Total: ${cost['total_cost']:.5f}**
+                """)
+                
+                st.info("These are estimates. Actual cost may vary.")
