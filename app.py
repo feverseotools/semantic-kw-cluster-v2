@@ -12,6 +12,14 @@ import nltk
 import plotly.express as px
 import plotly.graph_objects as go
 
+# Page Configuration (MUST be at the top)
+st.set_page_config(
+    page_title="Semantic Keyword Clustering",
+    page_icon="🔍",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
 # System and Library Checks
 def safe_import(library_name):
     """
@@ -91,17 +99,25 @@ def import_utility_modules():
             st.error(f"Failed to import {module}")
             st.error(traceback.format_exc())
 
+# Generate Sample CSV
+def generate_sample_csv():
+    """
+    Generate a sample keyword CSV
+    """
+    sample_data = [
+        "classical music concerts",
+        "beethoven symphony tickets",
+        "opera house events",
+        "mozart concert 2023",
+        "philharmonic orchestra schedule",
+        "buy symphony tickets",
+        "vienna philharmonic tour"
+    ]
+    return "\n".join(sample_data)
+
 # Early Initialization
 download_nltk_resources()
 import_utility_modules()
-
-# Page Configuration
-st.set_page_config(
-    page_title="Semantic Keyword Clustering",
-    page_icon="🔍",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
 
 # Main Application Function
 def main():
@@ -142,6 +158,11 @@ def main():
         # File Upload
         uploaded_file = st.file_uploader("Upload CSV", type=['csv'])
         
+        # Sample Data Option
+        if st.button("Use Sample Data"):
+            sample_csv = generate_sample_csv()
+            uploaded_file = pd.compat.StringIO(sample_csv)
+        
         # Clustering Parameters
         num_clusters = st.slider("Number of Clusters", 2, 50, 10)
         
@@ -159,19 +180,19 @@ def main():
     # Clustering Process
     if start_clustering and uploaded_file:
         try:
-            # Import modules dynamically to handle potential import errors
+            # Dynamic module importing
             from utils.preprocessing import preprocess_keywords
             from utils.embedding import generate_embeddings
             from utils.clustering import cluster_keywords
-            from utils.intent import classify_search_intent
-            from utils.naming import generate_cluster_names
+            from utils.visualization import create_cluster_visualization
             
-            # Read CSV
-            df = pd.read_csv(uploaded_file)
+            # Read CSV or sample data
+            df = pd.read_csv(uploaded_file, header=None, names=['keyword']) if isinstance(uploaded_file, pd.compat.StringIO) else pd.read_csv(uploaded_file)
             
             # Preprocessing
             with st.spinner("Preprocessing Keywords..."):
                 processed_keywords = preprocess_keywords(df['keyword'], language)
+                df['processed_keyword'] = processed_keywords
             
             # Generate Embeddings
             with st.spinner("Generating Semantic Embeddings..."):
@@ -187,20 +208,21 @@ def main():
                     num_clusters=num_clusters
                 )
             
-            # Display Results
-            st.success(f"Created {num_clusters} semantic clusters!")
+            # Assign cluster labels
+            df['cluster_id'] = cluster_results['labels']
             
-            # Visualization and Analysis to be added...
+            # Visualization
+            st.subheader("Cluster Visualization")
+            cluster_viz = create_cluster_visualization(df)
+            st.plotly_chart(cluster_viz, use_container_width=True)
+            
+            # Results Summary
+            st.success(f"Created {num_clusters} semantic clusters!")
+            st.dataframe(df[['keyword', 'processed_keyword', 'cluster_id']])
         
         except Exception as e:
             st.error(f"Clustering failed: {e}")
             st.error(traceback.format_exc())
-
-    # Sample Data Download
-    st.sidebar.markdown("### Sample Data")
-    if st.sidebar.button("Download Sample CSV"):
-        # Implement sample CSV generation logic
-        pass
 
 # Application Entry Point
 if __name__ == "__main__":
