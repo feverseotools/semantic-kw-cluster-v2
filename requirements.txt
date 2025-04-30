@@ -1,18 +1,25 @@
 # Core dependencies
 streamlit==1.25.0
 pandas==2.0.3
-numpy>=1.25.2  # Use a version compatible with Python 3.12
+numpy==1.23.5
 nltk==3.8.1
 scikit-learn==1.3.0
 plotly==5.15.0
 
-# Embedding generation
+# NLP and Embedding
 sentence-transformers==2.2.2
-openai==1.2.0
-
-# Data preprocessing (optional)
 spacy==3.6.0
 textblob==0.17.1
+nltk
 
-# For handling various data formats
+# API and Advanced Processing
+openai==1.2.0
 requests==2.31.0
+
+# Build and system dependencies
+wheel
+setuptools>=67.8.0
+packaging
+
+# Additional optional dependencies
+scipy
