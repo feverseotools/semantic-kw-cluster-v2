@@ -237,3 +237,101 @@ def main():
                 """)
                 
                 st.info("These are estimates. Actual cost may vary.")
+# Main content area
+    if not st.session_state['process_complete']:
+        # Download sample data button
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            st.markdown("### Start by uploading your keyword data")
+            st.markdown("""
+            Upload a CSV file with your keywords, or use the sample data to test the app.
+            """)
+        with col2:
+            with st.expander("Need a sample file?"):
+                st.markdown("Download a sample CSV to see the expected format:")
+                
+                if st.button("Download with headers (Keyword Planner format)"):
+                    csv_data = generate_sample_csv(with_header=True)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv_data,
+                        file_name="sample_keywords_with_header.csv",
+                        mime="text/csv"
+                    )
+                
+                if st.button("Download without headers (just keywords)"):
+                    csv_data = generate_sample_csv(with_header=False)
+                    st.download_button(
+                        label="Download CSV",
+                        data=csv_data,
+                        file_name="sample_keywords_no_header.csv",
+                        mime="text/csv"
+                    )
+        
+        # Process data
+        process_col1, process_col2, process_col3 = st.columns([1, 2, 1])
+        with process_col2:
+            if st.button("Start Semantic Clustering", type="primary", use_container_width=True):
+                try:
+                    # Load data
+                    df = None
+                    if uploaded_file is not None:
+                        if csv_format == "With header (column names in first row)":
+                            df = pd.read_csv(uploaded_file)
+                            if "Keyword" in df.columns:
+                                df.rename(columns={"Keyword": "keyword"}, inplace=True)
+                            if "keyword" not in df.columns:
+                                st.error("CSV must have a 'keyword' or 'Keyword' column.")
+                                return
+                        else:
+                            df = pd.read_csv(uploaded_file, header=None, names=["keyword"])
+                    elif use_sample:
+                        if sample_type == "With header (like Keyword Planner)":
+                            sample_data = StringIO(generate_sample_csv(with_header=True))
+                            df = pd.read_csv(sample_data)
+                        else:
+                            sample_data = StringIO(generate_sample_csv(with_header=False))
+                            df = pd.read_csv(sample_data, header=None, names=["keyword"])
+                    
+                    if df is None or len(df) == 0:
+                        st.error("No data to process. Please upload a CSV or use sample data.")
+                        return
+                    
+                    # Display dataset info
+                    st.success(f"Loaded {len(df)} keywords")
+                    
+                    # Preprocessing
+                    with st.spinner("Preprocessing keywords..."):
+                        from utils.preprocessing import preprocess_keywords
+                        df['processed_keyword'] = preprocess_keywords(
+                            df['keyword'].tolist(), 
+                            language=selected_language
+                        )
+                    
+                    # Generate embeddings
+                    with st.spinner("Generating semantic embeddings..."):
+                        from utils.embedding import generate_embeddings
+                        embeddings = generate_embeddings(
+                            df['processed_keyword'].tolist(),
+                            openai_api_key=openai_api_key,
+                            language=selected_language
+                        )
+                    
+                    # Clustering
+                    with st.spinner("Clustering keywords..."):
+                        from utils.clustering import cluster_keywords
+                        cluster_results = cluster_keywords(
+                            embeddings, 
+                            num_clusters=num_clusters,
+                            pca_variance=pca_variance/100
+                        )
+                        
+                        df['cluster_id'] = cluster_results['labels']
+                        
+                        # Get representative keywords for each cluster
+                        representative_keywords = {}
+                        for cluster_id in range(1, num_clusters+1):
+                            cluster_mask = df['cluster_id'] == cluster_id
+                            if any(cluster_mask):
+                                cluster_keywords = df.loc[cluster_mask, 'keyword'].tolist()
+                                representative_keywords[cluster_id] = cluster_keywords[:min(10, len(cluster_keywords))]
