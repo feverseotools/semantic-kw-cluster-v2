@@ -4,6 +4,7 @@ import time
 import json
 import re
 import traceback
+import io
 
 import numpy as np
 import pandas as pd
@@ -104,16 +105,19 @@ def generate_sample_csv():
     """
     Generate a sample keyword CSV
     """
-    sample_data = [
+    sample_data = "keyword\n" + "\n".join([
         "classical music concerts",
         "beethoven symphony tickets",
         "opera house events",
         "mozart concert 2023",
         "philharmonic orchestra schedule",
         "buy symphony tickets",
-        "vienna philharmonic tour"
-    ]
-    return "\n".join(sample_data)
+        "vienna philharmonic tour",
+        "concert tickets online",
+        "orchestra performance schedule",
+        "music event booking"
+    ])
+    return sample_data
 
 # Early Initialization
 download_nltk_resources()
@@ -132,6 +136,11 @@ def main():
             font-weight: bold;
             margin-bottom: 1rem;
             color: #2c3e50;
+        }
+        .subheader {
+            font-size: 1.5rem;
+            color: #34495e;
+            margin-top: 1rem;
         }
     </style>
     """, unsafe_allow_html=True)
@@ -161,7 +170,7 @@ def main():
         # Sample Data Option
         if st.button("Use Sample Data"):
             sample_csv = generate_sample_csv()
-            uploaded_file = pd.compat.StringIO(sample_csv)
+            uploaded_file = io.StringIO(sample_csv)
         
         # Clustering Parameters
         num_clusters = st.slider("Number of Clusters", 2, 50, 10)
@@ -187,7 +196,7 @@ def main():
             from utils.visualization import create_cluster_visualization
             
             # Read CSV or sample data
-            df = pd.read_csv(uploaded_file, header=None, names=['keyword']) if isinstance(uploaded_file, pd.compat.StringIO) else pd.read_csv(uploaded_file)
+            df = pd.read_csv(uploaded_file)
             
             # Preprocessing
             with st.spinner("Preprocessing Keywords..."):
@@ -212,13 +221,18 @@ def main():
             df['cluster_id'] = cluster_results['labels']
             
             # Visualization
-            st.subheader("Cluster Visualization")
+            st.markdown("<div class='subheader'>Cluster Visualization</div>", unsafe_allow_html=True)
             cluster_viz = create_cluster_visualization(df)
             st.plotly_chart(cluster_viz, use_container_width=True)
             
             # Results Summary
             st.success(f"Created {num_clusters} semantic clusters!")
-            st.dataframe(df[['keyword', 'processed_keyword', 'cluster_id']])
+            
+            # Cluster Details
+            st.markdown("<div class='subheader'>Cluster Details</div>", unsafe_allow_html=True)
+            cluster_summary = df.groupby('cluster_id')['keyword'].agg(['count', 'first'])
+            cluster_summary.columns = ['Keyword Count', 'Sample Keyword']
+            st.dataframe(cluster_summary)
         
         except Exception as e:
             st.error(f"Clustering failed: {e}")
