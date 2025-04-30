@@ -10,6 +10,24 @@ import re
 import nltk
 from io import StringIO
 
+import nltk
+import streamlit as st
+
+@st.cache_resource
+def download_nltk_resources():
+    try:
+        nltk.download('stopwords', quiet=True)
+        nltk.download('punkt', quiet=True)
+        nltk.download('wordnet', quiet=True)
+        nltk.download('omw-1.4', quiet=True)
+        return True
+    except Exception as e:
+        st.error(f"NLTK resource download failed: {e}")
+        return False
+
+# Call this early to ensure resources are downloaded
+download_nltk_resources()
+
 # Page configuration
 st.set_page_config(
     page_title="Semantic Keyword Clustering",
