@@ -1,0 +1,6 @@
+streamlit
+pandas
+openai
+scikit-learn
+plotly
+umap-learn # For UMAP visualization
