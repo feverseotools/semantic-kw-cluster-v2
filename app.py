@@ -388,3 +388,87 @@ def main():
                     
                 except Exception as e:
                     st.error(f"An error occurred: {str(e)}")
+else:
+        # Display results
+        df = st.session_state['clustering_results']
+        cluster_names = st.session_state['cluster_names']
+        cluster_intents = st.session_state['cluster_intents']
+        representative_keywords = st.session_state['representative_keywords']
+        
+        # Results tabs
+        tab1, tab2, tab3 = st.tabs(["Cluster Overview", "Explore Clusters", "Export Results"])
+        
+        # Tab 1: Overview
+        with tab1:
+            st.markdown("### Clustering Results Overview")
+            
+            # Display metrics
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Total Keywords", len(df))
+            with col2:
+                st.metric("Number of Clusters", len(df['cluster_id'].unique()))
+            with col3:
+                avg_cluster_size = len(df) / len(df['cluster_id'].unique())
+                st.metric("Average Cluster Size", f"{avg_cluster_size:.1f}")
+            
+            # Visualizations
+            st.markdown("### Cluster Size Distribution")
+            viz_col1, viz_col2 = st.columns([2, 1])
+            
+            with viz_col1:
+                # Create cluster size visualization
+                from utils.visualization import create_cluster_visualization
+                cluster_size_fig = create_cluster_visualization(df)
+                st.plotly_chart(cluster_size_fig, use_container_width=True)
+            
+            with viz_col2:
+                # Search intent distribution
+                from utils.visualization import create_intent_visualization
+                intent_fig = create_intent_visualization(cluster_intents)
+                st.plotly_chart(intent_fig, use_container_width=True)
+            
+            # Customer journey visualization
+            st.markdown("### Customer Journey Distribution")
+            
+            # Count clusters in each journey phase
+            journey_phases = {cluster_id: data["journey_phase"] for cluster_id, data in cluster_intents.items()}
+            
+            # Create a dataframe for visualization
+            journey_counts = pd.Series(journey_phases).value_counts().reset_index()
+            journey_counts.columns = ['phase', 'count']
+            
+            if not journey_counts.empty:
+                journey_order = [
+                    "Early (Research/Awareness)",
+                    "Middle (Consideration)",
+                    "Late (Decision/Purchase)",
+                    "Mixed"
+                ]
+                
+                # Create bar chart
+                journey_fig = px.bar(
+                    journey_counts, 
+                    x='phase', 
+                    y='count',
+                    color='phase',
+                    title="Keyword Clusters by Customer Journey Stage",
+                    labels={'phase': 'Journey Stage', 'count': 'Number of Clusters'},
+                    color_discrete_map={
+                        "Early (Research/Awareness)": "#4CAF50",
+                        "Middle (Consideration)": "#2196F3",
+                        "Late (Decision/Purchase)": "#FF9800",
+                        "Mixed": "#9E9E9E"
+                    }
+                )
+                
+                st.plotly_chart(journey_fig, use_container_width=True)
+                
+                st.markdown("""
+                **Understanding the Customer Journey:**
+                - **Early Stage (Research/Awareness)**: Users are learning about solutions to their problems (informational queries)
+                - **Middle Stage (Consideration)**: Users are comparing options and evaluating alternatives (commercial queries)
+                - **Late Stage (Decision/Purchase)**: Users are ready to make a purchase (transactional queries)
+                
+                Target your content and campaigns according to where users are in their journey.
+                """)
