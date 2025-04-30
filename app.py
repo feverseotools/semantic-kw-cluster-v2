@@ -1,243 +1,126 @@
-import os
-import sys
-import time
-import json
-import re
-import traceback
-import io
+# app.py
 
-import numpy as np
-import pandas as pd
 import streamlit as st
-import nltk
-import plotly.express as px
-import plotly.graph_objects as go
+import pandas as pd
 
-# Page Configuration (MUST be at the top)
+# --- Page Configuration ---
+# Set the page title and layout
+# The layout="wide" option uses the full page width
 st.set_page_config(
-    page_title="Semantic Keyword Clustering",
-    page_icon="🔍",
+    page_title="Semantic Keyword Clustering Tool",
     layout="wide",
-    initial_sidebar_state="expanded"
+    initial_sidebar_state="expanded" # Optional: Keep the sidebar open initially
 )
 
-# System and Library Checks
-def safe_import(library_name):
-    """
-    Safely import libraries with error tracking
-    """
+# --- Application Title ---
+st.title("Semantic Keyword Clustering Tool 🚀")
+st.markdown("""
+Welcome! This tool helps you cluster keywords based on semantic relevance using OpenAI embeddings.
+Upload your keyword list in CSV format, provide your OpenAI API key, and configure the clustering options below.
+""")
+
+# --- Sidebar for Inputs ---
+st.sidebar.header("Configuration")
+
+# API Key Input
+# Use type="password" to mask the input
+api_key = st.sidebar.text_input("Enter your OpenAI API Key:", type="password", key="api_key_input")
+
+# File Uploader
+# Allows users to upload a CSV file
+# type=["csv"] restricts uploads to CSV files only
+uploaded_file = st.sidebar.file_uploader("Upload your Keyword CSV file", type=["csv"], key="file_uploader")
+
+# --- Main Area for Processing and Results ---
+
+# Placeholder for CSV column selection (if file is uploaded)
+keyword_column = None
+if uploaded_file is not None:
+    st.sidebar.markdown("---")
+    st.sidebar.subheader("CSV Configuration")
     try:
-        __import__(library_name)
-        return True
-    except ImportError:
-        st.error(f"Failed to import {library_name}")
-        st.error(traceback.format_exc())
-        return False
-
-def check_system_info():
-    """
-    Display system and library version information
-    """
-    st.sidebar.header("🖥 System Information")
-    st.sidebar.write(f"Python Version: {sys.version}")
-    st.sidebar.write(f"Streamlit Version: {st.__version__}")
-
-    # Library version checks
-    libraries = [
-        ('numpy', 'NumPy'),
-        ('pandas', 'Pandas'),
-        ('nltk', 'NLTK'),
-        ('sklearn', 'Scikit-Learn'),
-        ('plotly', 'Plotly'),
-        ('openai', 'OpenAI'),
-        ('sentence_transformers', 'Sentence Transformers'),
-        ('spacy', 'spaCy'),
-        ('textblob', 'TextBlob')
-    ]
-
-    for lib, name in libraries:
-        try:
-            module = __import__(lib)
-            version = getattr(module, '__version__', 'Unknown')
-            st.sidebar.write(f"{name} Version: {version}")
-        except ImportError:
-            st.sidebar.error(f"{name} not installed")
-
-# NLTK Resource Download
-@st.cache_resource
-def download_nltk_resources():
-    """
-    Download necessary NLTK resources
-    """
-    try:
-        nltk.download('stopwords', quiet=True)
-        nltk.download('punkt', quiet=True)
-        nltk.download('wordnet', quiet=True)
-        nltk.download('omw-1.4', quiet=True)
-        return True
+        # Read only the first few rows to get headers without loading the whole file yet
+        df_peek = pd.read_csv(uploaded_file, nrows=5)
+        # Reset file pointer to the beginning for later full read
+        uploaded_file.seek(0)
+        
+        # Let user select the keyword column
+        keyword_column = st.sidebar.selectbox(
+            "Select the column containing keywords:",
+            options=df_peek.columns,
+            index=0, # Default to the first column
+            key="keyword_column_selector"
+        )
+        st.sidebar.info(f"Selected keyword column: **{keyword_column}**")
     except Exception as e:
-        st.error(f"NLTK resource download failed: {e}")
-        return False
+        st.sidebar.error(f"Error reading CSV headers: {e}")
+        uploaded_file = None # Reset uploaded file if error
 
-# Import Utility Modules
-def import_utility_modules():
-    """
-    Import and check utility modules
-    """
-    utility_modules = [
-        'utils.preprocessing',
-        'utils.embedding',
-        'utils.clustering',
-        'utils.intent',
-        'utils.naming',
-        'utils.visualization'
-    ]
+# Placeholder for Model Selection
+st.sidebar.markdown("---")
+st.sidebar.subheader("Clustering Options")
+embedding_model = st.sidebar.selectbox(
+    "Select OpenAI Embedding Model:",
+    options=["text-embedding-3-small", "text-embedding-3-large"],
+    index=0, # Default to the cheaper/faster model
+    key="embedding_model_selector",
+    help="`text-embedding-3-small` is faster and cheaper, while `text-embedding-3-large` offers potentially higher accuracy." # [1, 2, 3, 4, 5, 6, 7, 8]
+)
 
-    for module in utility_modules:
-        try:
-            __import__(module)
-        except ImportError:
-            st.error(f"Failed to import {module}")
-            st.error(traceback.format_exc())
+# Placeholder for Number of Clusters (k) Input
+num_clusters = st.sidebar.slider(
+    "Select the number of clusters (k):",
+    min_value=2,
+    max_value=20, # Adjust max value as needed
+    value=5, # Default value
+    step=1,
+    key="k_slider",
+    help="Choose the desired number of keyword groups. Elbow/Silhouette plots (when generated) can help guide this selection." # [9, 10, 11, 12, 13, 14, 15]
+)
 
-# Generate Sample CSV
-def generate_sample_csv():
-    """
-    Generate a sample keyword CSV
-    """
-    sample_data = "keyword\n" + "\n".join([
-        "classical music concerts",
-        "beethoven symphony tickets",
-        "opera house events",
-        "mozart concert 2023",
-        "philharmonic orchestra schedule",
-        "buy symphony tickets",
-        "vienna philharmonic tour",
-        "concert tickets online",
-        "orchestra performance schedule",
-        "music event booking"
-    ])
-    return sample_data
+# --- Button to Start Processing ---
+st.sidebar.markdown("---")
+start_processing = st.sidebar.button("Cluster Keywords", key="start_button", type="primary")
 
-# Early Initialization
-download_nltk_resources()
-import_utility_modules()
+# --- Display Area ---
+st.markdown("---")
+st.header("Results")
 
-# Main Application Function
-def main():
-    # Display System Information
-    check_system_info()
-
-    # Custom CSS
-    st.markdown("""
-    <style>
-        .main-header {
-            font-size: 2.5rem;
-            font-weight: bold;
-            margin-bottom: 1rem;
-            color: #2c3e50;
-        }
-        .subheader {
-            font-size: 1.5rem;
-            color: #34495e;
-            margin-top: 1rem;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-
-    # Application Title
-    st.markdown("<div class='main-header'>🔍 Semantic Keyword Clustering</div>", unsafe_allow_html=True)
-    
-    # Introduction
-    st.markdown("""
-    This advanced tool clusters keywords semantically, helping you understand 
-    search intent, customer journey, and content strategy.
-    
-    **Key Features:**
-    - Semantic clustering using NLP
-    - Search intent classification
-    - Customer journey mapping
-    - OpenAI-powered insights (optional)
-    """)
-
-    # Sidebar Configuration
-    with st.sidebar:
-        st.header("Clustering Configuration")
+if start_processing:
+    if not api_key:
+        st.warning("Please enter your OpenAI API Key in the sidebar.")
+    elif uploaded_file is None:
+        st.warning("Please upload a CSV file containing keywords in the sidebar.")
+    elif keyword_column is None:
+         st.warning("Please select the keyword column in the sidebar.")
+    else:
+        st.info("Processing started... This may take a few moments depending on the file size and API speed.")
+        # --- Placeholder for calling the core logic ---
+        # 1. Read the full CSV using the selected keyword_column [16, 17, 18, 19, 20, 21, 22, 23, 24, 25]
+        # 2. Get embeddings using the selected model and API key [26, 1, 2, 3, 27, 4, 28, 5, 6, 7, 29, 8, 30, 31, 32, 33, 34, 35, 36, 37]
+        # 3. Perform K-Means clustering [9, 38, 10, 11, 39, 40, 12, 13, 14, 15, 41, 42, 43]
+        # 4. Determine optimal K (Elbow/Silhouette) [11, 12, 13, 14, 15]
+        # 5. Visualize results (UMAP + Plotly) [44, 45, 46, 47, 48, 49, 50, 51, 52]
+        # 6. Display clustered keywords table [45, 53]
         
-        # File Upload
-        uploaded_file = st.file_uploader("Upload CSV", type=['csv'])
+        st.write(f"Processing file: {uploaded_file.name}")
+        st.write(f"Selected keyword column: {keyword_column}")
+        st.write(f"Selected embedding model: {embedding_model}")
+        st.write(f"Selected number of clusters: {num_clusters}")
         
-        # Sample Data Option
-        if st.button("Use Sample Data"):
-            sample_csv = generate_sample_csv()
-            uploaded_file = io.StringIO(sample_csv)
+        # Example: Displaying a placeholder message
+        st.success("Clustering process would run here!")
         
-        # Clustering Parameters
-        num_clusters = st.slider("Number of Clusters", 2, 50, 10)
+        # Placeholder for results display
+        st.subheader("Cluster Visualization (Placeholder)")
+        st.markdown("*(Interactive UMAP/t-SNE plot will appear here)*") # [47, 48, 49, 50, 52]
         
-        # Language Selection
-        languages = ["English", "Spanish", "French", "German", "Portuguese"]
-        language = st.selectbox("Select Language", languages)
-        
-        # OpenAI Integration
-        st.subheader("OpenAI Integration (Optional)")
-        openai_api_key = st.text_input("OpenAI API Key", type="password")
-        
-        # Start Clustering Button
-        start_clustering = st.button("Start Clustering", use_container_width=True)
+        st.subheader("Clustered Keywords (Placeholder)")
+        st.markdown("*(Table showing keywords grouped by cluster will appear here)*")
 
-    # Clustering Process
-    if start_clustering and uploaded_file:
-        try:
-            # Dynamic module importing
-            from utils.preprocessing import preprocess_keywords
-            from utils.embedding import generate_embeddings
-            from utils.clustering import cluster_keywords
-            from utils.visualization import create_cluster_visualization
-            
-            # Read CSV or sample data
-            df = pd.read_csv(uploaded_file)
-            
-            # Preprocessing
-            with st.spinner("Preprocessing Keywords..."):
-                processed_keywords = preprocess_keywords(df['keyword'], language)
-                df['processed_keyword'] = processed_keywords
-            
-            # Generate Embeddings
-            with st.spinner("Generating Semantic Embeddings..."):
-                embeddings = generate_embeddings(
-                    processed_keywords, 
-                    openai_api_key=openai_api_key
-                )
-            
-            # Clustering
-            with st.spinner("Performing Semantic Clustering..."):
-                cluster_results = cluster_keywords(
-                    embeddings, 
-                    num_clusters=num_clusters
-                )
-            
-            # Assign cluster labels
-            df['cluster_id'] = cluster_results['labels']
-            
-            # Visualization
-            st.markdown("<div class='subheader'>Cluster Visualization</div>", unsafe_allow_html=True)
-            cluster_viz = create_cluster_visualization(df)
-            st.plotly_chart(cluster_viz, use_container_width=True)
-            
-            # Results Summary
-            st.success(f"Created {num_clusters} semantic clusters!")
-            
-            # Cluster Details
-            st.markdown("<div class='subheader'>Cluster Details</div>", unsafe_allow_html=True)
-            cluster_summary = df.groupby('cluster_id')['keyword'].agg(['count', 'first'])
-            cluster_summary.columns = ['Keyword Count', 'Sample Keyword']
-            st.dataframe(cluster_summary)
-        
-        except Exception as e:
-            st.error(f"Clustering failed: {e}")
-            st.error(traceback.format_exc())
+else:
+    st.info("Configure the options in the sidebar and click 'Cluster Keywords' to begin.")
 
-# Application Entry Point
-if __name__ == "__main__":
-    main()
+# --- Footer ---
+st.markdown("---")
+st.markdown("Developed for semantic keyword analysis.")
