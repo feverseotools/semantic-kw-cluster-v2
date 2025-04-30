@@ -335,3 +335,56 @@ def main():
                             if any(cluster_mask):
                                 cluster_keywords = df.loc[cluster_mask, 'keyword'].tolist()
                                 representative_keywords[cluster_id] = cluster_keywords[:min(10, len(cluster_keywords))]
+# Generate cluster names using OpenAI if API key is provided
+                    cluster_names = {}
+                    if openai_api_key:
+                        with st.spinner("Generating descriptive cluster names..."):
+                            try:
+                                from utils.naming import generate_cluster_names
+                                cluster_names = generate_cluster_names(
+                                    representative_keywords, 
+                                    openai_api_key, 
+                                    model=openai_model
+                                )
+                            except Exception as e:
+                                st.error(f"Error generating cluster names: {str(e)}")
+                                # Fallback to generic names
+                                for cluster_id in representative_keywords.keys():
+                                    cluster_names[cluster_id] = (f"Cluster {cluster_id}", f"Group of related keywords")
+                    else:
+                        # Generate simple names based on top keywords
+                        for cluster_id, keywords in representative_keywords.items():
+                            if keywords:
+                                name = f"Cluster {cluster_id}: {keywords[0]}"
+                                desc = f"Keywords related to {', '.join(keywords[:3])}"
+                                cluster_names[cluster_id] = (name, desc)
+                    
+                    # Apply names to dataframe
+                    df['cluster_name'] = df['cluster_id'].map(lambda x: cluster_names.get(x, (f"Cluster {x}", ""))[0])
+                    df['cluster_description'] = df['cluster_id'].map(lambda x: cluster_names.get(x, ("", f"Cluster {x}"))[1])
+                    
+                    # Analyze search intent for each cluster
+                    with st.spinner("Analyzing search intent..."):
+                        from utils.intent import classify_search_intent, analyze_journey_phase
+                        cluster_intents = {}
+                        for cluster_id in representative_keywords.keys():
+                            keywords = representative_keywords[cluster_id]
+                            intent_result = classify_search_intent(keywords)
+                            journey_phase = analyze_journey_phase(intent_result)
+                            cluster_intents[cluster_id] = {
+                                "intent": intent_result,
+                                "journey_phase": journey_phase
+                            }
+                    
+                    # Store results in session state
+                    st.session_state['clustering_results'] = df
+                    st.session_state['cluster_names'] = cluster_names
+                    st.session_state['cluster_intents'] = cluster_intents
+                    st.session_state['representative_keywords'] = representative_keywords
+                    st.session_state['process_complete'] = True
+                    
+                    # Force refresh to show results
+                    st.experimental_rerun()
+                    
+                except Exception as e:
+                    st.error(f"An error occurred: {str(e)}")
