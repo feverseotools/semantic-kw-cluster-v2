@@ -330,7 +330,7 @@ class SemanticKeywordClusterer:
         
         return self.clusters
     
-        def batch_process(
+    def batch_process(
         self,
         batch_size: int = 1000,
         optimize: bool = False,
@@ -413,85 +413,85 @@ class SemanticKeywordClusterer:
         
         return self.clusters
     
-def save(
-    self,
-    output_dir: str,
-    formats: List[str] = ['json'],
-    file_prefix: str = 'clusters'
-) -> Dict[str, str]:
-    """
-    Save clustering results to files.
-    
-    Args:
-        output_dir: Directory to save the files
-        formats: List of formats to save
-        file_prefix: Prefix for the output files
+    def save(
+        self,
+        output_dir: str,
+        formats: List[str] = ['json'],
+        file_prefix: str = 'clusters'
+    ) -> Dict[str, str]:
+        """
+        Save clustering results to files.
         
-    Returns:
-        Dictionary of format -> output file path
-    """
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Get timestamp for the filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    output_files = {}
-    
-    # Export to each requested format
-    for fmt in formats:
-        if fmt.lower() == 'json':
-            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.json")
-            success = export_to_json(
-                self.clusters,
-                output_path,
-                cluster_labels=self.cluster_labels,
-                evaluation_metrics=self.metrics
-            )
-            if success:
-                output_files['json'] = output_path
-                
-        elif fmt.lower() == 'excel':
-            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.xlsx")
-            success = export_to_excel(
-                self.clusters,
-                output_path,
-                cluster_labels=self.cluster_labels,
-                evaluation_metrics=self.metrics
-            )
-            if success:
-                output_files['excel'] = output_path
-                
-        elif fmt.lower() == 'html':
-            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.html")
-            success = export_to_html(
-                self.clusters,
-                output_path,
-                cluster_labels=self.cluster_labels,
-                evaluation_metrics=self.metrics,
-                embeddings_2d=self.embeddings_2d,
-                labels=self.labels
-            )
-            if success:
-                output_files['html'] = output_path
-                
-        elif fmt.lower() == 'pdf':
-            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.pdf")
-            success = export_to_pdf(
-                self.clusters,
-                output_path,
-                cluster_labels=self.cluster_labels,
-                evaluation_metrics=self.metrics,
-                embeddings_2d=self.embeddings_2d,
-                labels=self.labels
-            )
-            if success:
-                output_files['pdf'] = output_path
-                
-        else:
-            self.logger.warning(f"Unsupported export format: {fmt}")
-    
-    return output_files
+        Args:
+            output_dir: Directory to save the files
+            formats: List of formats to save
+            file_prefix: Prefix for the output files
+            
+        Returns:
+            Dictionary of format -> output file path
+        """
+        # Create output directory if it doesn't exist
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Get timestamp for the filename
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        
+        output_files = {}
+        
+        # Export to each requested format
+        for fmt in formats:
+            if fmt.lower() == 'json':
+                output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.json")
+                success = export_to_json(
+                    self.clusters,
+                    output_path,
+                    cluster_labels=self.cluster_labels,
+                    evaluation_metrics=self.metrics
+                )
+                if success:
+                    output_files['json'] = output_path
+                    
+            elif fmt.lower() == 'excel':
+                output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.xlsx")
+                success = export_to_excel(
+                    self.clusters,
+                    output_path,
+                    cluster_labels=self.cluster_labels,
+                    evaluation_metrics=self.metrics
+                )
+                if success:
+                    output_files['excel'] = output_path
+                    
+            elif fmt.lower() == 'html':
+                output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.html")
+                success = export_to_html(
+                    self.clusters,
+                    output_path,
+                    cluster_labels=self.cluster_labels,
+                    evaluation_metrics=self.metrics,
+                    embeddings_2d=self.embeddings_2d,
+                    labels=self.labels
+                )
+                if success:
+                    output_files['html'] = output_path
+                    
+            elif fmt.lower() == 'pdf':
+                output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.pdf")
+                success = export_to_pdf(
+                    self.clusters,
+                    output_path,
+                    cluster_labels=self.cluster_labels,
+                    evaluation_metrics=self.metrics,
+                    embeddings_2d=self.embeddings_2d,
+                    labels=self.labels
+                )
+                if success:
+                    output_files['pdf'] = output_path
+                    
+            else:
+                self.logger.warning(f"Unsupported export format: {fmt}")
+        
+        return output_files
     
     def get_metrics(self) -> Dict[str, Any]:
         """
@@ -533,239 +533,239 @@ def save(
         """
         return self.embeddings_2d, self.labels
     
-def run_pipeline(
-    self,
-    keywords: Optional[List[str]] = None,
-    file_path: Optional[str] = None,
-    optimize: bool = False,
-    min_clusters: int = 2,
-    max_clusters: int = 20,
-    output_dir: str = 'output',
-    formats: List[str] = ['json'],
-    file_prefix: str = 'clusters',
-    label_method: str = 'tfidf',
-    batch_size: Optional[int] = None
-) -> Dict[str, Any]:
-    """
-    Run the complete clustering pipeline.
-    
-    Args:
-        keywords: List of keywords (optional)
-        file_path: Path to keywords file (optional)
-        optimize: Whether to optimize the number of clusters
-        min_clusters: Minimum number of clusters for optimization
-        max_clusters: Maximum number of clusters for optimization
-        output_dir: Directory to save the output files
-        formats: List of output formats
-        file_prefix: Prefix for the output files
-        label_method: Method for extracting cluster labels
-        batch_size: Size of batches for large datasets (set None to disable batching)
+    def run_pipeline(
+        self,
+        keywords: Optional[List[str]] = None,
+        file_path: Optional[str] = None,
+        optimize: bool = False,
+        min_clusters: int = 2,
+        max_clusters: int = 20,
+        output_dir: str = 'output',
+        formats: List[str] = ['json'],
+        file_prefix: str = 'clusters',
+        label_method: str = 'tfidf',
+        batch_size: Optional[int] = None
+    ) -> Dict[str, Any]:
+        """
+        Run the complete clustering pipeline.
         
-    Returns:
-        Dictionary with results and output files
-    """
-    # Load keywords
-    if keywords:
-        self.load_keywords(keywords)
-    elif file_path:
-        self.load_keywords_from_file(file_path)
-    
-    if not self.processed_keywords:
-        self.logger.error("No keywords provided")
-        return {"success": False, "error": "No keywords provided"}
-    
-    # Perform clustering
-    if batch_size and len(self.processed_keywords) > batch_size:
-        self.batch_process(
-            batch_size=batch_size,
-            optimize=optimize,
-            min_clusters=min_clusters,
-            max_clusters=max_clusters,
-            label_method=label_method
-        )
-    else:
-        self.cluster(
-            optimize=optimize,
-            min_clusters=min_clusters,
-            max_clusters=max_clusters,
-            label_method=label_method
-        )
-    
-    # Save results
-    output_files = self.save(
-        output_dir=output_dir,
-        formats=formats,
-        file_prefix=file_prefix
-    )
-    
-    return {
-        "success": True,
-        "clusters": self.clusters,
-        "cluster_labels": self.cluster_labels,
-        "metrics": self.metrics,
-        "output_files": output_files
-    }
-
-def main():
-    """
-    Command line interface for semantic keyword clustering.
-    """
-    import argparse
-    
-    parser = argparse.ArgumentParser(description="Semantic Keyword Clustering")
-    
-    # Input options
-    parser.add_argument(
-        "--input", "-i", 
-        type=str,
-        help="Path to input file (CSV, TXT, JSON)"
-    )
-    
-    # Clustering options
-    parser.add_argument(
-        "--method", "-m",
-        type=str,
-        choices=["kmeans", "dbscan", "hdbscan", "agglomerative"],
-        default="kmeans",
-        help="Clustering method to use"
-    )
-    
-    parser.add_argument(
-        "--clusters", "-c",
-        type=int,
-        default=None,
-        help="Number of clusters (will be optimized if not specified)"
-    )
-    
-    parser.add_argument(
-        "--optimize", "-o",
-        action="store_true",
-        help="Optimize number of clusters"
-    )
-    
-    parser.add_argument(
-        "--min-clusters",
-        type=int,
-        default=2,
-        help="Minimum number of clusters for optimization"
-    )
-    
-    parser.add_argument(
-        "--max-clusters",
-        type=int,
-        default=20,
-        help="Maximum number of clusters for optimization"
-    )
-
-    parser.add_argument(
-        "--batch-size",
-        type=int,
-        default=None,
-        help="Process keywords in batches of this size (for large datasets)"
-    )
-    
-    # Embedding options
-    parser.add_argument(
-        "--embedding-model", "-e",
-        type=str,
-        default="all-MiniLM-L6-v2",
-        help="Embedding model to use"
-    )
-    
-    # Output options
-    parser.add_argument(
-        "--output-dir", "-d",
-        type=str,
-        default="output",
-        help="Directory to save output files"
-    )
-    
-    parser.add_argument(
-        "--formats", "-f",
-        type=str,
-        nargs="+",
-        choices=["json", "excel", "html", "pdf"],
-        default=["json"],
-        help="Output formats"
-    )
-    
-    parser.add_argument(
-        "--prefix", "-p",
-        type=str,
-        default="clusters",
-        help="Prefix for output files"
-    )
-    
-    # Miscellaneous
-    parser.add_argument(
-        "--no-preprocess",
-        action="store_true",
-        help="Skip keyword preprocessing"
-    )
-    
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug logging"
-    )
-    
-    parser.add_argument(
-        "--visualization",
-        type=str,
-        choices=["pca", "umap"],
-        default="umap",
-        help="Visualization method for dimensionality reduction"
-    )
-    
-    # Parse arguments
-    args = parser.parse_args()
-    
-    # Set log level
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-    
-    # Create clusterer
-    clusterer = SemanticKeywordClusterer(
-        embedding_model=args.embedding_model,
-        method=args.method,
-        n_clusters=args.clusters,
-        perform_preprocessing=not args.no_preprocess
-    )
-    
-    # Set visualization method
-    clusterer.set_visualization_method(args.visualization)
-    
-    # Run pipeline
-    if args.input:
-        results = clusterer.run_pipeline(
-            file_path=args.input,
-            optimize=args.optimize,
-            min_clusters=args.min_clusters,
-            max_clusters=args.max_clusters,
-            output_dir=args.output_dir,
-            formats=args.formats,
-            file_prefix=args.prefix
-        )
+        Args:
+            keywords: List of keywords (optional)
+            file_path: Path to keywords file (optional)
+            optimize: Whether to optimize the number of clusters
+            min_clusters: Minimum number of clusters for optimization
+            max_clusters: Maximum number of clusters for optimization
+            output_dir: Directory to save the output files
+            formats: List of output formats
+            file_prefix: Prefix for the output files
+            label_method: Method for extracting cluster labels
+            batch_size: Size of batches for large datasets (set None to disable batching)
+            
+        Returns:
+            Dictionary with results and output files
+        """
+        # Load keywords
+        if keywords:
+            self.load_keywords(keywords)
+        elif file_path:
+            self.load_keywords_from_file(file_path)
         
-        if results["success"]:
-            print(f"Clustering completed successfully")
-            print(f"Created {len(results['clusters'])} clusters")
-            
-            metrics = results.get("metrics", {})
-            if "silhouette_score" in metrics:
-                print(f"Silhouette score: {metrics['silhouette_score']:.4f}")
-            
-            print("Results saved to:")
-            for fmt, path in results.get("output_files", {}).items():
-                print(f"  {fmt.upper()}: {path}")
-            
-            return 0
+        if not self.processed_keywords:
+            self.logger.error("No keywords provided")
+            return {"success": False, "error": "No keywords provided"}
+        
+        # Perform clustering
+        if batch_size and len(self.processed_keywords) > batch_size:
+            self.batch_process(
+                batch_size=batch_size,
+                optimize=optimize,
+                min_clusters=min_clusters,
+                max_clusters=max_clusters,
+                label_method=label_method
+            )
         else:
-            print(f"Error: {results.get('error', 'Unknown error')}")
-            return 1
-    else:
-        print("No input file specified")
-        return 1
+            self.cluster(
+                optimize=optimize,
+                min_clusters=min_clusters,
+                max_clusters=max_clusters,
+                label_method=label_method
+            )
+        
+        # Save results
+        output_files = self.save(
+            output_dir=output_dir,
+            formats=formats,
+            file_prefix=file_prefix
+        )
+        
+        return {
+            "success": True,
+            "clusters": self.clusters,
+            "cluster_labels": self.cluster_labels,
+            "metrics": self.metrics,
+            "output_files": output_files
+        }
 
-if __name__ == "__main__":
-    main()
+    def main():
+        """
+        Command line interface for semantic keyword clustering.
+        """
+        import argparse
+        
+        parser = argparse.ArgumentParser(description="Semantic Keyword Clustering")
+        
+        # Input options
+        parser.add_argument(
+            "--input", "-i", 
+            type=str,
+            help="Path to input file (CSV, TXT, JSON)"
+        )
+        
+        # Clustering options
+        parser.add_argument(
+            "--method", "-m",
+            type=str,
+            choices=["kmeans", "dbscan", "hdbscan", "agglomerative"],
+            default="kmeans",
+            help="Clustering method to use"
+        )
+        
+        parser.add_argument(
+            "--clusters", "-c",
+            type=int,
+            default=None,
+            help="Number of clusters (will be optimized if not specified)"
+        )
+        
+        parser.add_argument(
+            "--optimize", "-o",
+            action="store_true",
+            help="Optimize number of clusters"
+        )
+        
+        parser.add_argument(
+            "--min-clusters",
+            type=int,
+            default=2,
+            help="Minimum number of clusters for optimization"
+        )
+        
+        parser.add_argument(
+            "--max-clusters",
+            type=int,
+            default=20,
+            help="Maximum number of clusters for optimization"
+        )
+    
+        parser.add_argument(
+            "--batch-size",
+            type=int,
+            default=None,
+            help="Process keywords in batches of this size (for large datasets)"
+        )
+        
+        # Embedding options
+        parser.add_argument(
+            "--embedding-model", "-e",
+            type=str,
+            default="all-MiniLM-L6-v2",
+            help="Embedding model to use"
+        )
+        
+        # Output options
+        parser.add_argument(
+            "--output-dir", "-d",
+            type=str,
+            default="output",
+            help="Directory to save output files"
+        )
+        
+        parser.add_argument(
+            "--formats", "-f",
+            type=str,
+            nargs="+",
+            choices=["json", "excel", "html", "pdf"],
+            default=["json"],
+            help="Output formats"
+        )
+        
+        parser.add_argument(
+            "--prefix", "-p",
+            type=str,
+            default="clusters",
+            help="Prefix for output files"
+        )
+        
+        # Miscellaneous
+        parser.add_argument(
+            "--no-preprocess",
+            action="store_true",
+            help="Skip keyword preprocessing"
+        )
+        
+        parser.add_argument(
+            "--debug",
+            action="store_true",
+            help="Enable debug logging"
+        )
+        
+        parser.add_argument(
+            "--visualization",
+            type=str,
+            choices=["pca", "umap"],
+            default="umap",
+            help="Visualization method for dimensionality reduction"
+        )
+        
+        # Parse arguments
+        args = parser.parse_args()
+        
+        # Set log level
+        if args.debug:
+            logging.getLogger().setLevel(logging.DEBUG)
+        
+        # Create clusterer
+        clusterer = SemanticKeywordClusterer(
+            embedding_model=args.embedding_model,
+            method=args.method,
+            n_clusters=args.clusters,
+            perform_preprocessing=not args.no_preprocess
+        )
+        
+        # Set visualization method
+        clusterer.set_visualization_method(args.visualization)
+        
+        # Run pipeline
+        if args.input:
+            results = clusterer.run_pipeline(
+                file_path=args.input,
+                optimize=args.optimize,
+                min_clusters=args.min_clusters,
+                max_clusters=args.max_clusters,
+                output_dir=args.output_dir,
+                formats=args.formats,
+                file_prefix=args.prefix
+            )
+            
+            if results["success"]:
+                print(f"Clustering completed successfully")
+                print(f"Created {len(results['clusters'])} clusters")
+                
+                metrics = results.get("metrics", {})
+                if "silhouette_score" in metrics:
+                    print(f"Silhouette score: {metrics['silhouette_score']:.4f}")
+                
+                print("Results saved to:")
+                for fmt, path in results.get("output_files", {}).items():
+                    print(f"  {fmt.upper()}: {path}")
+                
+                return 0
+            else:
+                print(f"Error: {results.get('error', 'Unknown error')}")
+                return 1
+        else:
+            print("No input file specified")
+            return 1
+    
+    if __name__ == "__main__":
+        main()
