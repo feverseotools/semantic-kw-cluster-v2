@@ -330,6 +330,96 @@ class SemanticKeywordClusterer:
         
         return self.clusters
     
+        def batch_process(
+        self,
+        batch_size: int = 1000,
+        optimize: bool = False,
+        min_clusters: int = 2,
+        max_clusters: int = 20,
+        label_method: str = 'tfidf'
+    ) -> Dict[str, List[str]]:
+        """
+        Process keywords in batches to reduce memory usage.
+        
+        Args:
+            batch_size: Number of keywords to process in each batch
+            optimize: Whether to optimize the number of clusters
+            min_clusters: Minimum number of clusters for optimization
+            max_clusters: Maximum number of clusters for optimization
+            label_method: Method for extracting cluster labels
+            
+        Returns:
+            Dictionary of cluster_id -> list of keywords
+        """
+        if len(self.processed_keywords) <= batch_size:
+            # If the dataset is smaller than the batch size, process everything at once
+            return self.cluster(optimize, min_clusters, max_clusters, label_method)
+        
+        self.logger.info(f"Processing {len(self.processed_keywords)} keywords in batches of {batch_size}")
+        
+        # Initialize result containers
+        all_clusters = {}
+        all_embeddings = []
+        all_labels = []
+        cluster_offset = 0
+        
+        # Process keywords in batches
+        for i in range(0, len(self.processed_keywords), batch_size):
+            batch = self.processed_keywords[i:i+batch_size]
+            self.logger.info(f"Processing batch {i//batch_size + 1} ({len(batch)} keywords)")
+            
+            # Save the current keywords and replace with the batch
+            original_keywords = self.processed_keywords
+            self.processed_keywords = batch
+            
+            # Process this batch
+            batch_clusters = self.cluster(optimize, min_clusters, max_clusters, label_method)
+            
+            # Adjust cluster IDs to avoid conflicts
+            adjusted_clusters = {}
+            for cluster_id, keywords in batch_clusters.items():
+                new_id = str(int(cluster_id) + cluster_offset)
+                adjusted_clusters[new_id] = keywords
+            
+            # Update offset for next batch
+            cluster_offset += len(batch_clusters)
+            
+            # Add to result
+            all_clusters.update(adjusted_clusters)
+            
+            # Collect embeddings and labels for overall evaluation
+            if self.embeddings_2d is not None and self.labels is not None:
+                all_embeddings.extend(self.embeddings_2d)
+                all_labels.extend([int(cluster_id) for cluster_id in adjusted_clusters.keys() for _ in adjusted_clusters[cluster_id]])
+            
+            # Restore original keywords
+            self.processed_keywords = original_keywords
+        
+        # Update instance variables with combined results
+        self.clusters = all_clusters
+        
+        # Update visualization data if available
+        if all_embeddings and all_labels:
+            self.embeddings_2d = np.array(all_embeddings)
+            self.labels = np.array(all_labels)
+        
+        # Re-generate cluster labels for all clusters
+        self.cluster_labels = extract_cluster_labels(
+            self.clusters,
+            method=label_method
+        )
+        
+        self.logger.info(f"Batch processing complete. Created {len(self.clusters)} clusters with {sum(len(keywords) for keywords in self.clusters.values())} keywords")
+        
+        return self.clusters
+    
+    def save(
+        self,
+        output_dir: str,
+        formats: List[str] = ['json'],
+        file_prefix: str = 'clusters'
+    ) -> Dict[str, str]:
+
     def save(
         self,
         output_dir: str,
@@ -450,67 +540,78 @@ class SemanticKeywordClusterer:
         """
         return self.embeddings_2d, self.labels
     
-    def run_pipeline(
-        self,
-        keywords: Optional[List[str]] = None,
-        file_path: Optional[str] = None,
-        optimize: bool = False,
-        min_clusters: int = 2,
-        max_clusters: int = 20,
-        output_dir: str = 'output',
-        formats: List[str] = ['json'],
-        file_prefix: str = 'clusters',
-        label_method: str = 'tfidf'
-    ) -> Dict[str, Any]:
-        """
-        Run the complete clustering pipeline.
+def run_pipeline(
+    self,
+    keywords: Optional[List[str]] = None,
+    file_path: Optional[str] = None,
+    optimize: bool = False,
+    min_clusters: int = 2,
+    max_clusters: int = 20,
+    output_dir: str = 'output',
+    formats: List[str] = ['json'],
+    file_prefix: str = 'clusters',
+    label_method: str = 'tfidf',
+    batch_size: Optional[int] = None
+) -> Dict[str, Any]:
+    """
+    Run the complete clustering pipeline.
+    
+    Args:
+        keywords: List of keywords (optional)
+        file_path: Path to keywords file (optional)
+        optimize: Whether to optimize the number of clusters
+        min_clusters: Minimum number of clusters for optimization
+        max_clusters: Maximum number of clusters for optimization
+        output_dir: Directory to save the output files
+        formats: List of output formats
+        file_prefix: Prefix for the output files
+        label_method: Method for extracting cluster labels
+        batch_size: Size of batches for large datasets (set None to disable batching)
         
-        Args:
-            keywords: List of keywords (optional)
-            file_path: Path to keywords file (optional)
-            optimize: Whether to optimize the number of clusters
-            min_clusters: Minimum number of clusters for optimization
-            max_clusters: Maximum number of clusters for optimization
-            output_dir: Directory to save the output files
-            formats: List of output formats
-            file_prefix: Prefix for the output files
-            label_method: Method for extracting cluster labels
-            
-        Returns:
-            Dictionary with results and output files
-        """
-        # Load keywords
-        if keywords:
-            self.load_keywords(keywords)
-        elif file_path:
-            self.load_keywords_from_file(file_path)
-        
-        if not self.processed_keywords:
-            self.logger.error("No keywords provided")
-            return {"success": False, "error": "No keywords provided"}
-        
-        # Perform clustering
+    Returns:
+        Dictionary with results and output files
+    """
+    # Load keywords
+    if keywords:
+        self.load_keywords(keywords)
+    elif file_path:
+        self.load_keywords_from_file(file_path)
+    
+    if not self.processed_keywords:
+        self.logger.error("No keywords provided")
+        return {"success": False, "error": "No keywords provided"}
+    
+    # Perform clustering
+    if batch_size and len(self.processed_keywords) > batch_size:
+        self.batch_process(
+            batch_size=batch_size,
+            optimize=optimize,
+            min_clusters=min_clusters,
+            max_clusters=max_clusters,
+            label_method=label_method
+        )
+    else:
         self.cluster(
             optimize=optimize,
             min_clusters=min_clusters,
             max_clusters=max_clusters,
             label_method=label_method
         )
-        
-        # Save results
-        output_files = self.save(
-            output_dir=output_dir,
-            formats=formats,
-            file_prefix=file_prefix
-        )
-        
-        return {
-            "success": True,
-            "clusters": self.clusters,
-            "cluster_labels": self.cluster_labels,
-            "metrics": self.metrics,
-            "output_files": output_files
-        }
+    
+    # Save results
+    output_files = self.save(
+        output_dir=output_dir,
+        formats=formats,
+        file_prefix=file_prefix
+    )
+    
+    return {
+        "success": True,
+        "clusters": self.clusters,
+        "cluster_labels": self.cluster_labels,
+        "metrics": self.metrics,
+        "output_files": output_files
+    }
 
 def main():
     """
@@ -561,6 +662,13 @@ def main():
         type=int,
         default=20,
         help="Maximum number of clusters for optimization"
+    )
+
+    parser.add_argument(
+        "--batch-size",
+        type=int,
+        default=None,
+        help="Process keywords in batches of this size (for large datasets)"
     )
     
     # Embedding options
