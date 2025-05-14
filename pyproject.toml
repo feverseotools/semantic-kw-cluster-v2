@@ -34,6 +34,10 @@ dependencies = [
     "nltk>=3.8.1",
     "textblob>=0.17.1",
     "sentence-transformers>=2.2.2",
+    "hdbscan>=0.8.29",
+    "umap-learn>=0.5.3",
+    "tqdm>=4.65.0",
+    "matplotlib>=3.7.0",
 ]
 
 [project.optional-dependencies]
