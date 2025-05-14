@@ -767,5 +767,5 @@ def main():
             print("No input file specified")
             return 1
     
-    if __name__ == "__main__":
+if __name__ == "__main__":
         main()
