@@ -181,6 +181,11 @@ with st.sidebar:
     if use_batching:
         batch_size = st.number_input("Batch Size", min_value=100, max_value=10000, value=1000, step=100)
         
+        if batch_size:
+            st.info(f"Processing will be done in batches of {batch_size} keywords")
+            if 'clusterer_params' in locals() or 'clusterer_params' in globals():
+                clusterer_params["batch_size"] = batch_size    
+                
     label_method = st.selectbox(
         "Cluster Labeling Method", 
         ["tfidf", "frequent", "centroid"],
