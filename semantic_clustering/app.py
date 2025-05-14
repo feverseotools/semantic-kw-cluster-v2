@@ -605,7 +605,6 @@ class SemanticKeywordClusterer:
             "metrics": self.metrics,
             "output_files": output_files
         }
-
 def main():
         """
         Command line interface for semantic keyword clustering.
