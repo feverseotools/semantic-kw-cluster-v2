@@ -413,92 +413,85 @@ class SemanticKeywordClusterer:
         
         return self.clusters
     
-    def save(
-        self,
-        output_dir: str,
-        formats: List[str] = ['json'],
-        file_prefix: str = 'clusters'
-    ) -> Dict[str, str]:
-
-    def save(
-        self,
-        output_dir: str,
-        formats: List[str] = ['json'],
-        file_prefix: str = 'clusters'
-    ) -> Dict[str, str]:
-        """
-        Save clustering results to files.
+def save(
+    self,
+    output_dir: str,
+    formats: List[str] = ['json'],
+    file_prefix: str = 'clusters'
+) -> Dict[str, str]:
+    """
+    Save clustering results to files.
+    
+    Args:
+        output_dir: Directory to save the files
+        formats: List of formats to save
+        file_prefix: Prefix for the output files
         
-        Args:
-            output_dir: Directory to save the files
-            formats: List of formats to save
-            file_prefix: Prefix for the output files
-            
-        Returns:
-            Dictionary of format -> output file path
-        """
-        # Create output directory if it doesn't exist
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # Get timestamp for the filename
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        
-        output_files = {}
-        
-        # Export to each requested format
-        for fmt in formats:
-            if fmt.lower() == 'json':
-                output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.json")
-                success = export_to_json(
-                    self.clusters,
-                    output_path,
-                    cluster_labels=self.cluster_labels,
-                    evaluation_metrics=self.metrics
-                )
-                if success:
-                    output_files['json'] = output_path
-                    
-            elif fmt.lower() == 'excel':
-                output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.xlsx")
-                success = export_to_excel(
-                    self.clusters,
-                    output_path,
-                    cluster_labels=self.cluster_labels,
-                    evaluation_metrics=self.metrics
-                )
-                if success:
-                    output_files['excel'] = output_path
-                    
-            elif fmt.lower() == 'html':
-                output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.html")
-                success = export_to_html(
-                    self.clusters,
-                    output_path,
-                    cluster_labels=self.cluster_labels,
-                    evaluation_metrics=self.metrics,
-                    embeddings_2d=self.embeddings_2d,
-                    labels=self.labels
-                )
-                if success:
-                    output_files['html'] = output_path
-                    
-            elif fmt.lower() == 'pdf':
-                output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.pdf")
-                success = export_to_pdf(
-                    self.clusters,
-                    output_path,
-                    cluster_labels=self.cluster_labels,
-                    evaluation_metrics=self.metrics,
-                    embeddings_2d=self.embeddings_2d,
-                    labels=self.labels
-                )
-                if success:
-                    output_files['pdf'] = output_path
-                    
-            else:
-                self.logger.warning(f"Unsupported export format: {fmt}")
-        
-        return output_files
+    Returns:
+        Dictionary of format -> output file path
+    """
+    # Create output directory if it doesn't exist
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Get timestamp for the filename
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    
+    output_files = {}
+    
+    # Export to each requested format
+    for fmt in formats:
+        if fmt.lower() == 'json':
+            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.json")
+            success = export_to_json(
+                self.clusters,
+                output_path,
+                cluster_labels=self.cluster_labels,
+                evaluation_metrics=self.metrics
+            )
+            if success:
+                output_files['json'] = output_path
+                
+        elif fmt.lower() == 'excel':
+            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.xlsx")
+            success = export_to_excel(
+                self.clusters,
+                output_path,
+                cluster_labels=self.cluster_labels,
+                evaluation_metrics=self.metrics
+            )
+            if success:
+                output_files['excel'] = output_path
+                
+        elif fmt.lower() == 'html':
+            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.html")
+            success = export_to_html(
+                self.clusters,
+                output_path,
+                cluster_labels=self.cluster_labels,
+                evaluation_metrics=self.metrics,
+                embeddings_2d=self.embeddings_2d,
+                labels=self.labels
+            )
+            if success:
+                output_files['html'] = output_path
+                
+        elif fmt.lower() == 'pdf':
+            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.pdf")
+            success = export_to_pdf(
+                self.clusters,
+                output_path,
+                cluster_labels=self.cluster_labels,
+                evaluation_metrics=self.metrics,
+                embeddings_2d=self.embeddings_2d,
+                labels=self.labels
+            )
+            if success:
+                output_files['pdf'] = output_path
+                
+        else:
+            self.logger.warning(f"Unsupported export format: {fmt}")
+    
+    return output_files
     
     def get_metrics(self) -> Dict[str, Any]:
         """
