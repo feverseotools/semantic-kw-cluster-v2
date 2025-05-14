@@ -35,6 +35,14 @@ openpyxl>=3.1.0
 # mypy>=1.0.0
 # isort>=5.12.0
 
+# Testing dependencies
+pytest>=7.0.0
+pytest-cov>=4.0.0
+hypothesis>=6.0.0
+pytest-benchmark>=4.0.0
+mock>=5.0.0
+faker>=18.0.0
+
 # --------- Post-installation instructions ---------
 # After installing the requirements, you may need to:
 #
