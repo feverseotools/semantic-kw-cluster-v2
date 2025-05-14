@@ -1,636 +1,458 @@
-#!/usr/bin/env python3
-"""
-Main application for semantic keyword clustering.
-
-This module provides the main functionality for the semantic keyword clustering
-application, including CLI interface and core workflow.
-"""
-
-import os
-import sys
-import logging
-import argparse
-from typing import List, Dict, Optional, Tuple, Any, Union
+import streamlit as st
+from semantic_clustering.app import SemanticKeywordClusterer
 import pandas as pd
 import numpy as np
-from datetime import datetime
+import os
 import tempfile
-import json
+import matplotlib.pyplot as plt
+from io import BytesIO
+import base64
 
-from .nlp.preprocessing import preprocess_text, preprocess_keywords
-from .nlp.intent import classify_search_intent
-from .nlp.models import get_embedding_model, list_available_models
+st.set_page_config(page_title="Semantic Keyword Clustering", layout="wide")
 
-from .clustering.embeddings import get_keywords_embeddings_matrix
-from .clustering.algorithms import (
-    cluster_keywords, 
-    optimize_clusters, 
-    extract_cluster_labels,
-    dimensionality_reduction
-)
-from .clustering.evaluation import evaluate_clusters
+st.title("Semantic Keyword Clustering")
+st.markdown("Group keywords based on semantic similarity, search intent, and customer journey mapping.")
 
-from .export.pdf import export_to_pdf
-from .export.excel import export_to_excel
-from .export.html import export_to_html
-from .export.json import export_to_json
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
-)
-
-logger = logging.getLogger(__name__)
-
-def load_keywords_from_file(file_path: str) -> List[str]:
-    """
-    Load keywords from various file formats.
-    
-    Args:
-        file_path: Path to the keywords file (CSV, TXT, JSON)
-        
-    Returns:
-        List of keywords
-    """
-    file_ext = os.path.splitext(file_path)[1].lower()
-    
+# Function to create visualizations for the results
+def create_cluster_visualization(embeddings_2d, labels, cluster_labels=None, width=800, height=600, dpi=100):
+    """Create a visualization of the clusters"""
     try:
-        if file_ext == '.csv':
-            # Try to determine if file has headers and use the first column
-            df = pd.read_csv(file_path)
-            if len(df.columns) > 0:
-                # Use first column as keywords
-                keywords = df.iloc[:, 0].astype(str).tolist()
-            else:
-                keywords = []
-                
-        elif file_ext == '.txt':
-            # Read one keyword per line
-            with open(file_path, 'r', encoding='utf-8') as f:
-                keywords = [line.strip() for line in f.readlines() if line.strip()]
-                
-        elif file_ext == '.json':
-            # Try to parse JSON, expecting either an array or an object with a keywords key
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                
-            if isinstance(data, list):
-                keywords = [str(k) for k in data if k]
-            elif isinstance(data, dict) and 'keywords' in data:
-                keywords = [str(k) for k in data['keywords'] if k]
-            else:
-                logger.error(f"Could not find keywords in JSON file: {file_path}")
-                keywords = []
-                
-        else:
-            logger.error(f"Unsupported file format: {file_ext}")
-            keywords = []
-            
-        logger.info(f"Loaded {len(keywords)} keywords from {file_path}")
-        return keywords
+        fig = plt.figure(figsize=(width/dpi, height/dpi), dpi=dpi)
+        ax = fig.add_subplot(111)
         
+        # Get unique labels and colors
+        unique_labels = np.unique(labels)
+        colors = plt.cm.tab10(np.linspace(0, 1, len(unique_labels)))
+        
+        # Plot each cluster
+        for i, label in enumerate(unique_labels):
+            mask = np.array(labels) == label
+            ax.scatter(
+                embeddings_2d[mask, 0],
+                embeddings_2d[mask, 1],
+                color=colors[i],
+                label=f"Cluster {label}",
+                alpha=0.7,
+                s=50,
+                edgecolors='w',
+                linewidths=0.5
+            )
+            
+            # Add cluster label at centroid
+            if len(embeddings_2d[mask]) > 0:
+                centroid = embeddings_2d[mask].mean(axis=0)
+                label_text = f"Cluster {label}"
+                if cluster_labels and str(label) in cluster_labels:
+                    label_text += f": {cluster_labels[str(label)]}"
+                
+                ax.text(
+                    centroid[0],
+                    centroid[1],
+                    label_text,
+                    fontsize=9,
+                    fontweight='bold',
+                    ha='center',
+                    va='center',
+                    bbox=dict(facecolor='white', alpha=0.7, edgecolor='none', boxstyle='round,pad=0.3')
+                )
+        
+        # Set plot properties
+        ax.set_title("Keyword Clusters Visualization", fontsize=16)
+        ax.grid(True, linestyle='--', alpha=0.7)
+        
+        # Remove axes ticks for cleaner look
+        ax.set_xticklabels([])
+        ax.set_yticklabels([])
+        
+        # Save to buffer
+        buf = BytesIO()
+        fig.tight_layout()
+        plt.savefig(buf, format='png', dpi=dpi, bbox_inches='tight')
+        buf.seek(0)
+        plt.close(fig)
+        
+        return buf
     except Exception as e:
-        logger.error(f"Error loading keywords from {file_path}: {e}")
-        return []
+        st.error(f"Error creating visualization: {str(e)}")
+        return None
 
-def save_clusters(
-    clusters: Dict[str, List[str]],
-    output_dir: str,
-    file_prefix: str,
-    formats: List[str] = ['json'],
-    cluster_labels: Optional[Dict[str, str]] = None,
-    evaluation_metrics: Optional[Dict[str, Any]] = None,
-    embeddings_2d: Optional[np.ndarray] = None,
-    labels: Optional[List[int]] = None
-) -> Dict[str, str]:
-    """
-    Save clusters to various file formats.
-    
-    Args:
-        clusters: Dictionary of cluster_id -> list of keywords
-        output_dir: Directory to save the files
-        file_prefix: Prefix for the output files
-        formats: List of formats to save ('json', 'excel', 'html', 'pdf')
-        cluster_labels: Dictionary of cluster_id -> descriptive label (optional)
-        evaluation_metrics: Dictionary of evaluation metrics (optional)
-        embeddings_2d: 2D embeddings for visualization (optional)
-        labels: Cluster labels corresponding to embeddings_2d (optional)
+def create_cluster_size_chart(clusters, width=800, height=400, dpi=100):
+    """Create a bar chart of cluster sizes"""
+    try:
+        # Get cluster sizes
+        cluster_ids = []
+        sizes = []
         
-    Returns:
-        Dictionary of format -> output file path
-    """
-    # Create output directory if it doesn't exist
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Get timestamp for the filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    
-    output_files = {}
-    
-    # Export to each requested format
-    for fmt in formats:
-        if fmt.lower() == 'json':
-            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.json")
-            success = export_to_json(
-                clusters,
-                output_path,
-                cluster_labels=cluster_labels,
-                evaluation_metrics=evaluation_metrics
+        for cluster_id, keywords in sorted(
+            clusters.items(),
+            key=lambda x: len(x[1]),
+            reverse=True
+        ):
+            cluster_ids.append(cluster_id)
+            sizes.append(len(keywords))
+        
+        # Limit to top 20 clusters if there are many
+        if len(cluster_ids) > 20:
+            cluster_ids = cluster_ids[:19] + ['Others']
+            sizes = sizes[:19] + [sum(sizes[19:])]
+        
+        # Create figure
+        fig = plt.figure(figsize=(width/dpi, height/dpi), dpi=dpi)
+        ax = fig.add_subplot(111)
+        
+        # Create bar chart
+        colors = plt.cm.viridis(np.linspace(0.1, 0.9, len(cluster_ids)))
+        bars = ax.bar(range(len(cluster_ids)), sizes, color=colors)
+        
+        # Add value labels on top of bars
+        for bar, size in zip(bars, sizes):
+            height = bar.get_height()
+            ax.text(
+                bar.get_x() + bar.get_width() / 2.,
+                height + 0.1,
+                str(size),
+                ha='center',
+                va='bottom',
+                fontsize=10
             )
-            if success:
-                output_files['json'] = output_path
-                
-        elif fmt.lower() == 'excel':
-            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.xlsx")
-            success = export_to_excel(
-                clusters,
-                output_path,
-                cluster_labels=cluster_labels,
-                evaluation_metrics=evaluation_metrics
-            )
-            if success:
-                output_files['excel'] = output_path
-                
-        elif fmt.lower() == 'html':
-            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.html")
-            success = export_to_html(
-                clusters,
-                output_path,
-                cluster_labels=cluster_labels,
-                evaluation_metrics=evaluation_metrics,
-                embeddings_2d=embeddings_2d,
-                labels=labels
-            )
-            if success:
-                output_files['html'] = output_path
-                
-        elif fmt.lower() == 'pdf':
-            output_path = os.path.join(output_dir, f"{file_prefix}_{timestamp}.pdf")
-            success = export_to_pdf(
-                clusters,
-                output_path,
-                cluster_labels=cluster_labels,
-                evaluation_metrics=evaluation_metrics,
-                embeddings_2d=embeddings_2d,
-                labels=labels
-            )
-            if success:
-                output_files['pdf'] = output_path
-                
-        else:
-            logger.warning(f"Unsupported export format: {fmt}")
-    
-    return output_files
+        
+        # Set plot properties
+        ax.set_title("Cluster Sizes", fontsize=16)
+        ax.set_ylabel("Number of Keywords", fontsize=12)
+        ax.set_xticks(range(len(cluster_ids)))
+        ax.set_xticklabels(cluster_ids, rotation=45, ha='right')
+        ax.grid(True, axis='y', linestyle='--', alpha=0.7)
+        
+        # Save to buffer
+        buf = BytesIO()
+        fig.tight_layout()
+        plt.savefig(buf, format='png', dpi=dpi, bbox_inches='tight')
+        buf.seek(0)
+        plt.close(fig)
+        
+        return buf
+    except Exception as e:
+        st.error(f"Error creating cluster size chart: {str(e)}")
+        return None
 
-def run_clustering_pipeline(
-    keywords: List[str],
-    n_clusters: Optional[int] = None,
-    method: str = 'kmeans',
-    label_method: str = 'tfidf',
-    embedding_model: str = 'all-MiniLM-L6-v2',
-    optimize: bool = False,
-    min_clusters: int = 2,
-    max_clusters: int = 20,
-    visualization_dimensions: int = 2,
-    visualization_method: str = 'umap',
-    preprocess: bool = True
-) -> Tuple[Dict[str, List[str]], Dict[str, str], Dict[str, Any], np.ndarray, List[int]]:
-    """
-    Run the complete clustering pipeline.
+with st.sidebar:
+    st.header("Configuration")
     
-    Args:
-        keywords: List of keywords to cluster
-        n_clusters: Number of clusters (optional, will be optimized if not provided)
-        method: Clustering method ('kmeans', 'dbscan', 'hdbscan', 'agglomerative')
-        label_method: Method for extracting cluster labels ('frequent', 'tfidf', 'centroid')
-        embedding_model: Name of the embedding model to use
-        optimize: Whether to optimize the number of clusters
-        min_clusters: Minimum number of clusters for optimization
-        max_clusters: Maximum number of clusters for optimization
-        visualization_dimensions: Number of dimensions for visualization
-        visualization_method: Method for dimensionality reduction ('pca', 'umap')
-        preprocess: Whether to preprocess the keywords
+    uploaded_file = st.file_uploader("Upload Keywords", type=["csv", "txt", "json"])
+    
+    model_options = ["all-MiniLM-L6-v2", "paraphrase-multilingual-MiniLM-L12-v2", "all-mpnet-base-v2"]
+    embedding_model = st.selectbox("Embedding Model", model_options)
+    
+    clustering_method = st.selectbox(
+        "Clustering Method", 
+        ["kmeans", "dbscan", "hdbscan", "agglomerative"],
+        help="KMeans is recommended for most cases"
+    )
+    
+    if clustering_method in ["kmeans", "agglomerative"]:
+        n_clusters = st.number_input("Number of Clusters", min_value=2, max_value=50, value=10)
+        optimize_clusters = st.checkbox("Optimize number of clusters", value=False)
         
-    Returns:
-        Tuple of (clusters dict, cluster labels dict, evaluation metrics dict, 
-                 2D embeddings, cluster labels)
-    """
-    # Log configuration
-    logger.info(f"Starting clustering pipeline with {len(keywords)} keywords")
-    logger.info(f"Clustering method: {method}")
-    logger.info(f"Embedding model: {embedding_model}")
-    
-    # Preprocess keywords if requested
-    if preprocess:
-        processed_keywords = preprocess_keywords(keywords)
-        logger.info(f"Preprocessing complete. {len(processed_keywords)} keywords after preprocessing")
+        if optimize_clusters:
+            col1, col2 = st.columns(2)
+            with col1:
+                min_clusters = st.number_input("Min Clusters", min_value=2, max_value=20, value=2)
+            with col2:
+                max_clusters = st.number_input("Max Clusters", min_value=3, max_value=50, value=20)
     else:
-        processed_keywords = keywords
+        # For DBSCAN and HDBSCAN
+        if clustering_method == "dbscan":
+            eps = st.slider("EPS Parameter", min_value=0.1, max_value=1.0, value=0.5, step=0.1)
+            min_samples = st.slider("Min Samples", min_value=2, max_value=20, value=5)
+        else:  # HDBSCAN
+            min_cluster_size = st.slider("Min Cluster Size", min_value=2, max_value=20, value=5)
+            min_samples = st.slider("Min Samples", min_value=1, max_value=20, value=None)
+        
+        optimize_clusters = False
+        n_clusters = None
     
-    # Get embeddings
-    embeddings_matrix, valid_keywords = get_keywords_embeddings_matrix(
-        processed_keywords, 
-        model_name=embedding_model,
-        show_progress=True
+    st.subheader("Advanced Options")
+    perform_preprocessing = st.checkbox("Preprocess keywords", value=True)
+    
+    label_method = st.selectbox(
+        "Cluster Labeling Method", 
+        ["tfidf", "frequent", "centroid"],
+        help="TF-IDF is recommended for most cases"
     )
     
-    logger.info(f"Generated embeddings for {len(valid_keywords)} keywords")
-    
-    # Optimize number of clusters if requested
-    if optimize or n_clusters is None:
-        if method in ['kmeans', 'agglomerative']:
-            logger.info(f"Optimizing number of clusters between {min_clusters} and {max_clusters}")
-            opt_n_clusters, best_score, _ = optimize_clusters(
-                valid_keywords,
-                min_clusters=min_clusters,
-                max_clusters=max_clusters,
-                method=method,
-                embedding_model=embedding_model
-            )
-            n_clusters = opt_n_clusters
-            logger.info(f"Optimal number of clusters: {n_clusters} (score: {best_score:.4f})")
-        else:
-            logger.info(f"Cluster optimization not supported for method: {method}")
-    
-    # Perform clustering
-    clusters, _, clusters_keywords, cluster_model = cluster_keywords(
-        valid_keywords,
-        method=method,
-        n_clusters=n_clusters,
-        embeddings_matrix=embeddings_matrix,
-        embedding_model=embedding_model
+    # Dimensionality reduction options
+    visualization_method = st.selectbox(
+        "Visualization Method", 
+        ["umap", "pca"],
+        help="UMAP generally provides better visualizations"
     )
     
-    logger.info(f"Created {len(clusters)} clusters")
-    
-    # Extract cluster labels
-    cluster_labels = extract_cluster_labels(
-        clusters,
-        method=label_method
+    export_formats = st.multiselect(
+        "Export Formats", 
+        ["json", "excel", "html", "pdf"],
+        default=["json"]
     )
-    
-    # Get cluster labels as a list for evaluation
-    if method == 'kmeans':
-        labels = cluster_model.labels_
-    elif method == 'dbscan':
-        labels = cluster_model.labels_
-    elif method == 'hdbscan':
-        labels = cluster_model.labels_
-    elif method == 'agglomerative':
-        labels = cluster_model.labels_
-    else:
-        # Create labels from clusters dictionary
-        labels = []
-        for i, keyword in enumerate(valid_keywords):
-            label = -1
-            for cluster_id, cluster_keywords in clusters.items():
-                if keyword in cluster_keywords:
-                    try:
-                        label = int(cluster_id)
-                    except ValueError:
-                        label = 0
-                    break
-            labels.append(label)
-    
-    # Evaluate clusters
-    metrics = evaluate_clusters(clusters, embeddings_matrix, labels)
-    logger.info(f"Silhouette score: {metrics.get('silhouette_score', 0):.4f}")
-    
-    # Reduce dimensionality for visualization
-    embeddings_2d = dimensionality_reduction(
-        embeddings_matrix,
-        method=visualization_method,
-        n_components=visualization_dimensions
-    )
-    
-    logger.info("Clustering pipeline complete")
-    
-    return clusters, cluster_labels, metrics, embeddings_2d, labels
 
-def main():
-    """
-    Main function for CLI execution.
-    """
-    parser = argparse.ArgumentParser(description="Semantic Keyword Clustering")
-    
-    # Input options
-    parser.add_argument(
-        "--input", "-i", 
-        type=str,
-        required=True,
-        help="Path to input file (CSV, TXT, JSON)"
-    )
-    
-    # Clustering options
-    parser.add_argument(
-        "--method", "-m",
-        type=str,
-        choices=["kmeans", "dbscan", "hdbscan", "agglomerative"],
-        default="kmeans",
-        help="Clustering method to use"
-    )
-    
-    parser.add_argument(
-        "--clusters", "-c",
-        type=int,
-        default=None,
-        help="Number of clusters (will be optimized if not specified)"
-    )
-    
-    parser.add_argument(
-        "--optimize", "-o",
-        action="store_true",
-        help="Optimize number of clusters"
-    )
-    
-    parser.add_argument(
-        "--min-clusters",
-        type=int,
-        default=2,
-        help="Minimum number of clusters for optimization"
-    )
-    
-    parser.add_argument(
-        "--max-clusters",
-        type=int,
-        default=20,
-        help="Maximum number of clusters for optimization"
-    )
-    
-    # Embedding options
-    parser.add_argument(
-        "--embedding-model", "-e",
-        type=str,
-        default="all-MiniLM-L6-v2",
-        help="Embedding model to use"
-    )
-    
-    parser.add_argument(
-        "--list-models",
-        action="store_true",
-        help="List available embedding models and exit"
-    )
-    
-    # Output options
-    parser.add_argument(
-        "--output-dir", "-d",
-        type=str,
-        default="output",
-        help="Directory to save output files"
-    )
-    
-    parser.add_argument(
-        "--formats", "-f",
-        type=str,
-        nargs="+",
-        choices=["json", "excel", "html", "pdf"],
-        default=["json"],
-        help="Output formats"
-    )
-    
-    parser.add_argument(
-        "--prefix", "-p",
-        type=str,
-        default="clusters",
-        help="Prefix for output files"
-    )
-    
-    # Miscellaneous
-    parser.add_argument(
-        "--no-preprocess",
-        action="store_true",
-        help="Skip keyword preprocessing"
-    )
-    
-    parser.add_argument(
-        "--debug",
-        action="store_true",
-        help="Enable debug logging"
-    )
-    
-    # Parse arguments
-    args = parser.parse_args()
-    
-    # Set log level
-    if args.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-    
-    # List models and exit if requested
-    if args.list_models:
-        models = list_available_models()
-        print("Available embedding models:")
-        for i, model in enumerate(models, 1):
-            print(f"{i}. {model}")
-        return 0
-    
-    # Load keywords
-    keywords = load_keywords_from_file(args.input)
-    
-    if not keywords:
-        logger.error("No keywords found in input file")
-        return 1
-    
-    # Run clustering pipeline
-    clusters, cluster_labels, metrics, embeddings_2d, labels = run_clustering_pipeline(
-        keywords,
-        n_clusters=args.clusters,
-        method=args.method,
-        embedding_model=args.embedding_model,
-        optimize=args.optimize,
-        min_clusters=args.min_clusters,
-        max_clusters=args.max_clusters,
-        preprocess=not args.no_preprocess
-    )
-    
-    # Save results
-    output_files = save_clusters(
-        clusters,
-        args.output_dir,
-        args.prefix,
-        formats=args.formats,
-        cluster_labels=cluster_labels,
-        evaluation_metrics=metrics,
-        embeddings_2d=embeddings_2d,
-        labels=labels
-    )
-    
-    logger.info("Results saved to:")
-    for fmt, path in output_files.items():
-        logger.info(f"  {fmt.upper()}: {path}")
-    
-    return 0
+    # Create the directory for exports
+    export_dir = "exports"
+    os.makedirs(export_dir, exist_ok=True)
 
-class SemanticKeywordClusterer:
-    """
-    Class-based API for semantic keyword clustering.
-    
-    This class provides a more object-oriented interface to the clustering
-    functionality, useful for integration with other applications.
-    """
-    
-    def __init__(
-        self,
-        embedding_model: str = 'all-MiniLM-L6-v2',
-        method: str = 'kmeans',
-        n_clusters: Optional[int] = None,
-        perform_preprocessing: bool = True
-    ):
-        """
-        Initialize the clusterer.
+if uploaded_file is not None:
+    try:
+        st.subheader("Input Data")
         
-        Args:
-            embedding_model: Name of the embedding model to use
-            method: Clustering method to use
-            n_clusters: Number of clusters (optional)
-            perform_preprocessing: Whether to preprocess keywords
-        """
-        self.embedding_model = embedding_model
-        self.method = method
-        self.n_clusters = n_clusters
-        self.perform_preprocessing = perform_preprocessing
+        # Read different file formats
+        file_extension = os.path.splitext(uploaded_file.name)[1].lower()
         
-        self.clusters = {}
-        self.cluster_labels = {}
-        self.metrics = {}
-        self.embeddings_2d = None
-        self.labels = None
-        self.keywords = []
-        self.processed_keywords = []
-        self.valid_keywords = []
-        
-        self.logger = logging.getLogger(f"{__name__}.SemanticKeywordClusterer")
-    
-    def load_keywords(self, keywords: List[str]) -> int:
-        """
-        Load keywords into the clusterer.
-        
-        Args:
-            keywords: List of keywords
+        if file_extension == '.csv':
+            has_header = st.checkbox("File has header", value=True)
+            df = pd.read_csv(uploaded_file)
             
-        Returns:
-            Number of loaded keywords
-        """
-        self.keywords = keywords
-        
-        if self.perform_preprocessing:
-            self.processed_keywords = preprocess_keywords(self.keywords)
-        else:
-            self.processed_keywords = self.keywords
+            if has_header:
+                st.write("Preview of input data:")
+                st.dataframe(df.head())
+                keywords = df.iloc[:, 0].dropna().astype(str).tolist()
+            else:
+                keywords = [line.strip() for line in uploaded_file.getvalue().decode().split('\n') if line.strip()]
+                st.write(f"Read {len(keywords)} keywords from txt format")
+                
+        elif file_extension == '.txt':
+            keywords = [line.strip() for line in uploaded_file.getvalue().decode().split('\n') if line.strip()]
+            st.write(f"Read {len(keywords)} keywords from txt file")
             
-        self.logger.info(f"Loaded {len(self.processed_keywords)} keywords")
-        return len(self.processed_keywords)
+        elif file_extension == '.json':
+            import json
+            data = json.loads(uploaded_file.getvalue())
+            if isinstance(data, list):
+                keywords = data
+            elif isinstance(data, dict) and 'keywords' in data:
+                keywords = data['keywords']
+            else:
+                st.error("JSON format not recognized. Please use a list of keywords or a dict with a 'keywords' key.")
+                keywords = []
+            st.write(f"Read {len(keywords)} keywords from json file")
+        
+        st.write(f"Total keywords loaded: {len(keywords)}")
+        
+        if len(keywords) > 1000:
+            st.warning(f"Large number of keywords detected ({len(keywords)}). Processing may take some time.")
+        
+        if st.button("Start Clustering"):
+            with st.spinner("Clustering keywords..."):
+                progress_bar = st.progress(0)
+                
+                # Initialize the clusterer with appropriate parameters
+                clusterer_params = {
+                    "embedding_model": embedding_model,
+                    "method": clustering_method,
+                    "perform_preprocessing": perform_preprocessing
+                }
+                
+                # Add method-specific parameters
+                if clustering_method in ["kmeans", "agglomerative"]:
+                    clusterer_params["n_clusters"] = n_clusters if not optimize_clusters else None
+                elif clustering_method == "dbscan":
+                    clusterer_params["eps"] = eps
+                    clusterer_params["min_samples"] = min_samples
+                elif clustering_method == "hdbscan":
+                    clusterer_params["min_cluster_size"] = min_cluster_size
+                    clusterer_params["min_samples"] = min_samples if min_samples else None
+                
+                # Initialize clusterer
+                clusterer = SemanticKeywordClusterer(**clusterer_params)
+                
+                # Load keywords
+                progress_bar.progress(0.1)
+                clusterer.load_keywords(keywords)
+                
+                # Perform clustering with progress updates
+                progress_bar.progress(0.3)
+                
+                cluster_params = {}
+                if clustering_method in ["kmeans", "agglomerative"]:
+                    cluster_params["optimize"] = optimize_clusters
+                    if optimize_clusters:
+                        cluster_params["min_clusters"] = min_clusters
+                        cluster_params["max_clusters"] = max_clusters
+                
+                cluster_params["label_method"] = label_method
+                
+                # Perform clustering
+                clusters = clusterer.cluster(**cluster_params)
+                
+                progress_bar.progress(0.8)
+                
+                # Get results
+                metrics = clusterer.get_metrics()
+                cluster_labels = clusterer.get_cluster_labels()
+                embeddings_2d, labels = clusterer.get_visualization_data()
+                
+                progress_bar.progress(1.0)
+                
+                # Display results in tabs
+                tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Clusters", "Visualizations", "Export"])
+                
+                with tab1:
+                    st.subheader("Clustering Results Overview")
+                    
+                    # Display key metrics
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total Clusters", len(clusters))
+                    with col2:
+                        st.metric("Total Keywords", sum(len(kws) for kws in clusters.values()))
+                    with col3:
+                        if "silhouette_score" in metrics:
+                            st.metric("Silhouette Score", f"{metrics['silhouette_score']:.4f}")
+                    
+                    # Show additional metrics
+                    st.subheader("Evaluation Metrics")
+                    metrics_to_show = {
+                        "silhouette_score": "Silhouette Score",
+                        "calinski_harabasz_score": "Calinski-Harabasz Score",
+                        "davies_bouldin_score": "Davies-Bouldin Score",
+                        "min_size": "Smallest Cluster Size",
+                        "max_size": "Largest Cluster Size",
+                        "mean_size": "Average Cluster Size"
+                    }
+                    
+                    metrics_df = pd.DataFrame([
+                        {"Metric": metrics_to_show.get(k, k), 
+                         "Value": f"{v:.4f}" if isinstance(v, float) else v}
+                        for k, v in metrics.items() 
+                        if k in metrics_to_show
+                    ])
+                    
+                    st.dataframe(metrics_df, hide_index=True)
+                    
+                    # Display cluster size chart
+                    st.subheader("Cluster Size Distribution")
+                    size_chart = create_cluster_size_chart(clusters)
+                    if size_chart:
+                        st.image(size_chart, use_column_width=True)
+                
+                with tab2:
+                    st.subheader("Cluster Details")
+                    
+                    # Sort clusters by size (descending)
+                    sorted_clusters = sorted(
+                        clusters.items(),
+                        key=lambda x: len(x[1]),
+                        reverse=True
+                    )
+                    
+                    for cluster_id, keywords in sorted_clusters:
+                        cluster_title = f"Cluster {cluster_id}"
+                        if cluster_id in cluster_labels:
+                            cluster_title += f": {cluster_labels[cluster_id]}"
+                            
+                        with st.expander(f"{cluster_title} ({len(keywords)} keywords)"):
+                            # Create a DataFrame for better display
+                            df = pd.DataFrame(sorted(keywords), columns=["Keyword"])
+                            st.dataframe(df, hide_index=True)
+                            
+                            # Add download option for this cluster
+                            cluster_csv = df.to_csv(index=False).encode('utf-8')
+                            st.download_button(
+                                label=f"Download Cluster {cluster_id} as CSV",
+                                data=cluster_csv,
+                                file_name=f"cluster_{cluster_id}.csv",
+                                mime="text/csv"
+                            )
+                
+                with tab3:
+                    st.subheader("Visualizations")
+                    
+                    if embeddings_2d is not None and labels is not None:
+                        # Create cluster visualization
+                        vis_buf = create_cluster_visualization(
+                            embeddings_2d, labels, cluster_labels
+                        )
+                        
+                        if vis_buf:
+                            st.image(vis_buf, use_column_width=True)
+                            
+                            # Convert buffer to base64 for download
+                            b64_vis = base64.b64encode(vis_buf.getvalue()).decode()
+                            href = f'<a href="data:image/png;base64,{b64_vis}" download="cluster_visualization.png">Download Visualization</a>'
+                            st.markdown(href, unsafe_allow_html=True)
+                    else:
+                        st.info("Visualization data not available.")
+                
+                with tab4:
+                    st.subheader("Export Results")
+                    
+                    # Export options
+                    export_results = clusterer.save(
+                        output_dir=export_dir,
+                        formats=export_formats,
+                        file_prefix=f"keywords_clustering_{clustering_method}"
+                    )
+                    
+                    if export_results:
+                        st.success(f"Successfully exported results in: {', '.join(export_results.keys())}")
+                        
+                        for format_name, file_path in export_results.items():
+                            with open(file_path, "rb") as f:
+                                file_data = f.read()
+                                st.download_button(
+                                    label=f"Download {format_name.upper()} file",
+                                    data=file_data,
+                                    file_name=os.path.basename(file_path),
+                                    mime=f"application/{format_name}"
+                                )
+                    else:
+                        st.error("Failed to export results. Check logs for details.")
+                        
+                    # Add option to download all clusters in CSV format
+                    all_keywords = []
+                    for cluster_id, keywords in clusters.items():
+                        for keyword in keywords:
+                            all_keywords.append({
+                                "cluster_id": cluster_id,
+                                "cluster_label": cluster_labels.get(cluster_id, ""),
+                                "keyword": keyword
+                            })
+                    
+                    all_df = pd.DataFrame(all_keywords)
+                    all_csv = all_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="Download All Clusters as CSV",
+                        data=all_csv,
+                        file_name="all_clusters.csv",
+                        mime="text/csv"
+                    )
+                    
+    except Exception as e:
+        st.error(f"Error processing file: {str(e)}")
+else:
+    st.info("Please upload a file to start clustering.")
     
-    def load_keywords_from_file(self, file_path: str) -> int:
-        """
-        Load keywords from a file.
-        
-        Args:
-            file_path: Path to the keywords file (CSV, TXT, JSON)
-            
-        Returns:
-            Number of loaded keywords
-        """
-        keywords = load_keywords_from_file(file_path)
-        return self.load_keywords(keywords)
-    
-    def cluster(
-        self,
-        optimize: bool = False,
-        min_clusters: int = 2,
-        max_clusters: int = 20,
-        label_method: str = 'tfidf'
-    ) -> Dict[str, List[str]]:
-        """
-        Perform clustering on the loaded keywords.
-        
-        Args:
-            optimize: Whether to optimize the number of clusters
-            min_clusters: Minimum number of clusters for optimization
-            max_clusters: Maximum number of clusters for optimization
-            label_method: Method for extracting cluster labels
-            
-        Returns:
-            Dictionary of cluster_id -> list of keywords
-        """
-        result = run_clustering_pipeline(
-            self.processed_keywords,
-            n_clusters=self.n_clusters,
-            method=self.method,
-            label_method=label_method,
-            embedding_model=self.embedding_model,
-            optimize=optimize,
-            min_clusters=min_clusters,
-            max_clusters=max_clusters,
-            preprocess=False  # Already preprocessed if needed
-        )
-        
-        self.clusters, self.cluster_labels, self.metrics, self.embeddings_2d, self.labels = result
-        self.valid_keywords = []
-        
-        # Collect valid keywords from clusters
-        for keywords in self.clusters.values():
-            self.valid_keywords.extend(keywords)
-        
-        return self.clusters
-    
-    def save(
-        self,
-        output_dir: str,
-        formats: List[str] = ['json'],
-        file_prefix: str = 'clusters'
-    ) -> Dict[str, str]:
-        """
-        Save clustering results to files.
-        
-        Args:
-            output_dir: Directory to save the files
-            formats: List of formats to save
-            file_prefix: Prefix for the output files
-            
-        Returns:
-            Dictionary of format -> output file path
-        """
-        return save_clusters(
-            self.clusters,
-            output_dir,
-            file_prefix,
-            formats=formats,
-            cluster_labels=self.cluster_labels,
-            evaluation_metrics=self.metrics,
-            embeddings_2d=self.embeddings_2d,
-            labels=self.labels
-        )
-    
-    def get_metrics(self) -> Dict[str, Any]:
-        """
-        Get clustering evaluation metrics.
-        
-        Returns:
-            Dictionary of evaluation metrics
-        """
-        return self.metrics
-    
-    def get_cluster_labels(self) -> Dict[str, str]:
-        """
-        Get descriptive labels for clusters.
-        
-        Returns:
-            Dictionary of cluster_id -> descriptive label
-        """
-        return self.cluster_labels
-    
-    def get_visualization_data(self) -> Tuple[Optional[np.ndarray], Optional[List[int]]]:
-        """
-        Get data for visualization.
-        
-        Returns:
-            Tuple of (2D embeddings, cluster labels)
-        """
-        return self.embeddings_2d, self.labels
+    # Sample data option
+    if st.button("Use Sample Data"):
+        # Load sample data from the repository
+        try:
+            sample_path = os.path.join("data", "samples", "sample_keywords.csv")
+            if os.path.exists(sample_path):
+                df = pd.read_csv(sample_path)
+                st.success(f"Loaded {len(df)} sample keywords!")
+                st.dataframe(df.head())
+                
+                # Create a download link for the sample
+                csv = df.to_csv(index=False).encode('utf-8')
+                st.download_button(
+                    label="Download Sample CSV",
+                    data=csv,
+                    file_name="sample_keywords.csv",
+                    mime="text/csv"
+                )
+            else:
+                st.error("Sample file not found. Please upload your own file.")
+        except Exception as e:
+            st.error(f"Error loading sample data: {str(e)}")
 
-if __name__ == "__main__":
-    sys.exit(main())
+# Add footer with information
+st.markdown("---")
+st.markdown(
+    "Semantic Keyword Clustering tool - See the [GitHub repository](https://github.com/yourusername/semantic-keyword-clustering) for more information."
+)
