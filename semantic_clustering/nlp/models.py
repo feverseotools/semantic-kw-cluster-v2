@@ -49,6 +49,50 @@ SPACY_LANGUAGE_MODELS = {
     "Brazilian Portuguese": {"model": "pt_core_news_sm", "fallback": True}  # Same as Portuguese
 }
 
+def get_embedding_model(model_name=None, device=None):
+    """
+    Returns a sentence embedding model for generating embeddings.
+    
+    Args:
+        model_name (str, optional): The name of the sentence-transformers model to use.
+                                   Default is 'all-MiniLM-L6-v2' if None.
+        device (str, optional): Device to use ('cpu' or 'cuda'). If None, autodetects.
+    
+    Returns:
+        SentenceTransformer: A model that can transform text into embeddings
+    """
+    try:
+        from sentence_transformers import SentenceTransformer
+        
+        if model_name is None:
+            model_name = "all-MiniLM-L6-v2"  # Default lightweight model
+        
+        if device is None:
+            # Auto-detect device
+            try:
+                import torch
+                device = "cuda" if torch.cuda.is_available() else "cpu"
+            except ImportError:
+                device = "cpu"
+                logger.warning("PyTorch not available, using CPU for embeddings")
+        
+        logger.info(f"Loading embedding model: {model_name} on {device}")
+        model = SentenceTransformer(model_name, device=device)
+        return model
+        
+    except ImportError:
+        error_msg = "sentence-transformers not installed. Install with: pip install sentence-transformers"
+        logger.error(error_msg)
+        if st:  # Check if we're in a Streamlit context
+            st.error(error_msg)
+        raise ImportError(error_msg)
+    except Exception as e:
+        error_msg = f"Error loading embedding model: {str(e)}"
+        logger.error(error_msg)
+        if st:  # Check if we're in a Streamlit context
+            st.error(error_msg)
+        raise
+
 def load_spacy_model_by_language(selected_language):
     """
     Try to load a spaCy model for the given language.
