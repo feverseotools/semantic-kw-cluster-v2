@@ -322,17 +322,6 @@ def classify_search_intent(keywords, search_intent_description="", cluster_name=
         "Commercial": comm_pct
     }
     
-    # Find primary intent (highest score)
-    primary_intent = max(scores, key=scores.get)
-    
-    # If the highest score is less than 30%, consider it mixed intent
-    max_score = max(scores.values())
-    if max_score < 30:
-        # Check if there's a close second
-        sorted_scores = sorted(scores.values(), reverse=True)
-        if len(sorted_scores) > 1 and (sorted_scores[0] - sorted_scores[1] < 10):
-            primary_intent = "Mixed Intent"
-    
     # Collect evidence for the primary intent
     evidence = {
         "Informational": list(info_signals),
@@ -340,6 +329,29 @@ def classify_search_intent(keywords, search_intent_description="", cluster_name=
         "Transactional": list(trans_signals),
         "Commercial": list(comm_signals)
     }
+    
+    # Find primary intent (highest score)
+    primary_intent = max(scores, key=scores.get)
+
+    # If the highest score is less than 30%, consider mixed intent cases
+    max_score = max(scores.values())
+    if max_score < 30:
+        # Get sorted intent scores
+        sorted_intents = sorted(scores.items(), key=lambda x: x[1], reverse=True)
+        
+        # Case 1: Close competition between top intents (difference < 10%)
+        if len(sorted_intents) > 1 and (sorted_intents[0][1] - sorted_intents[1][1] < 10):
+            primary_intent = "Mixed Intent"
+            # Add information about the mixed intents in the evidence
+            evidence["mixed_types"] = [sorted_intents[0][0], sorted_intents[1][0]]
+        
+        # Case 2: Extremely low confidence (all scores are low)
+        elif max_score < 20:
+            primary_intent = "Ambiguous Intent"
+        
+        # For other low confidence cases, we keep the top intent but mark low confidence
+        else:
+            evidence["low_confidence"] = True
     
     return {
         "primary_intent": primary_intent,
