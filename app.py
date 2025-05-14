@@ -173,7 +173,13 @@ with st.sidebar:
     
     st.subheader("Advanced Options")
     perform_preprocessing = st.checkbox("Preprocess keywords", value=True)
-    
+        use_batching = st.checkbox("Use batch processing for large datasets", value=False)
+    batch_size = None
+
+         if use_batching and batch_size:
+            st.info(f"Processing {len(keywords)} keywords in batches of {batch_size}")
+            clusterer_params["batch_size"] = batch_size
+
     label_method = st.selectbox(
         "Cluster Labeling Method", 
         ["tfidf", "frequent", "centroid"],
@@ -278,7 +284,13 @@ if uploaded_file is not None:
                 cluster_params["label_method"] = label_method
                 
                 # Perform clustering
-                clusters = clusterer.cluster(**cluster_params)
+                if use_batching and batch_size:
+                    clusters = clusterer.batch_process(
+                        batch_size=batch_size,
+                        **cluster_params
+                    )
+                else:
+                    clusters = clusterer.cluster(**cluster_params)
                 
                 progress_bar.progress(0.8)
                 
