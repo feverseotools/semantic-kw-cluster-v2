@@ -118,6 +118,8 @@ dmypy.json
 .vscode/
 *.swp
 *.swo
+.sublime-project
+.sublime-workspace
 
 # Project specific
 /models/
@@ -127,6 +129,9 @@ dmypy.json
 *.bin
 /data/cache/
 /temp/
+/logs/
+/output/
+/exports/
 
 # API keys and secrets
 .env.local
@@ -141,7 +146,25 @@ api_keys.txt
 *.xls
 *.zip
 *.gz
+*.parquet
+*.feather
+*.arrow
+*.hdf5
+*.joblib
 !data/samples/*.csv  # Allow sample CSV files in the samples directory
+
+# ML model caches
+.vector_cache/
+*_cache/
+
+# PDF export artifacts
+temp_*.png
+temp_*.jpg
+temp_plot_*.png
+
+# Dependencies management
+poetry.lock
+pyrightconfig.json
 
 # OS specific
 .DS_Store
