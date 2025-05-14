@@ -29,7 +29,7 @@ transformers<4.35.0
 # spacy-legacy==3.0.12  
 
 # Export dependencies
-reportlab==3.6.13
+reportlab==4.0.7
 pillow==9.5.0
 # kaleido==0.2.1  
 openpyxl==3.1.2
