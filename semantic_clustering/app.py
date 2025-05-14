@@ -606,7 +606,7 @@ class SemanticKeywordClusterer:
             "output_files": output_files
         }
 
-    def main():
+def main():
         """
         Command line interface for semantic keyword clustering.
         """
