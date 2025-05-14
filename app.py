@@ -8,7 +8,79 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 import base64
 
+# Function to initialize spaCy
+def initialize_nlp_dependencies():
+    """
+    Initialize NLP dependencies, including spaCy models and NLTK resources
+    to ensure the application works correctly in cloud environments.
+    """
+    try:
+        # Try to import spaCy
+        import spacy
+        
+        # Check if models are installed
+        required_models = {
+            "en_core_web_sm": "English",
+            "es_core_news_sm": "Spanish",
+            "fr_core_news_sm": "French",
+            "de_core_news_sm": "German",
+            "pl_core_news_sm": "Polish"
+        }
+        
+        installed_models = []
+        missing_models = []
+        
+        for model_name, language in required_models.items():
+            try:
+                # Try to load the model
+                spacy.load(model_name)
+                installed_models.append(f"{model_name} ({language})")
+            except OSError:
+                missing_models.append(f"{model_name} ({language})")
+        
+        if installed_models:
+            st.sidebar.success(f"✅ Available spaCy models: {', '.join(installed_models)}")
+        
+        if missing_models:
+            st.sidebar.warning(
+                f"⚠️ Some spaCy models are not installed: {', '.join(missing_models)}\n"
+                "Alternative text processing will be used for these languages."
+            )
+            
+            # Try to download English model if missing (this will work in some environments)
+            if "en_core_web_sm (English)" in missing_models:
+                try:
+                    st.sidebar.info("Attempting to download English model...")
+                    spacy.cli.download("en_core_web_sm")
+                    st.sidebar.success("✅ English model downloaded successfully")
+                except:
+                    st.sidebar.warning("Could not automatically download the model. Using fallback processing.")
+    except ImportError:
+        st.sidebar.warning("spaCy is not installed. Using alternative text processing methods.")
+    
+    # Try to initialize NLTK resources
+    try:
+        import nltk
+        
+        # Define required NLTK resources
+        required_resources = ['stopwords', 'punkt', 'wordnet', 'omw-1.4']
+        
+        # Check and download NLTK resources if needed
+        for resource in required_resources:
+            try:
+                nltk.data.find(f'tokenizers/{resource}')
+            except LookupError:
+                st.sidebar.info(f"Downloading NLTK resource: {resource}")
+                nltk.download(resource, quiet=True)
+        
+        st.sidebar.success("✅ NLTK resources initialized")
+    except Exception as e:
+        st.sidebar.warning(f"Could not initialize all NLTK resources. Some text processing features may be limited.")
+
 st.set_page_config(page_title="Semantic Keyword Clustering", layout="wide")
+
+# Initialize NLP dependencies at startup
+initialize_nlp_dependencies()
 
 st.title("Semantic Keyword Clustering")
 st.markdown("Group keywords based on semantic similarity, search intent, and customer journey mapping.")
@@ -207,7 +279,7 @@ with st.sidebar:
         optimize_clusters = False
         n_clusters = None
     
-    # Advanced Options - estas deben estar fuera del bloque condicional else
+    # Advanced Options
     st.subheader("Advanced Options")
     perform_preprocessing = st.checkbox("Preprocess keywords", value=True)
     # Update the global parameter dictionary
@@ -217,7 +289,7 @@ with st.sidebar:
     batch_size = None
     auto_batch_size = False
     
-    # Control batch_size solo si use_batching está activado
+    # Control batch_size only if use_batching is enabled
     if use_batching:
         auto_batch_size = st.checkbox("Auto-adjust batch size based on dataset size", value=True)
         
