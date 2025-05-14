@@ -171,21 +171,21 @@ with st.sidebar:
         optimize_clusters = False
         n_clusters = None
     
-        with st.sidebar:
-            st.subheader("Advanced Options")
-            perform_preprocessing = st.checkbox("Preprocess keywords", value=True)
-            use_batching = st.checkbox("Use batch processing for large datasets", value=False)
-            batch_size = None
+    # Advanced Options - estas deben estar fuera del bloque condicional else
+    st.subheader("Advanced Options")
+    perform_preprocessing = st.checkbox("Preprocess keywords", value=True)
+    use_batching = st.checkbox("Use batch processing for large datasets", value=False)
+    batch_size = None
+    
+    # Control batch_size solo si use_batching está activado
+    if use_batching:
+        batch_size = st.number_input("Batch Size", min_value=100, max_value=10000, value=1000, step=100)
         
-            if use_batching and batch_size:
-                st.info(f"Processing {len(keywords)} keywords in batches of {batch_size}")
-                clusterer_params["batch_size"] = batch_size
-        
-            label_method = st.selectbox(
-                "Cluster Labeling Method", 
-                ["tfidf", "frequent", "centroid"],
-                help="TF-IDF is recommended for most cases"
-            )
+    label_method = st.selectbox(
+        "Cluster Labeling Method", 
+        ["tfidf", "frequent", "centroid"],
+        help="TF-IDF is recommended for most cases"
+    )
     
     # Dimensionality reduction options
     visualization_method = st.selectbox(
