@@ -13,6 +13,14 @@ st.set_page_config(page_title="Semantic Keyword Clustering", layout="wide")
 st.title("Semantic Keyword Clustering")
 st.markdown("Group keywords based on semantic similarity, search intent, and customer journey mapping.")
 
+# Initialize global parameters dictionary to store all clustering parameters
+clusterer_params = {
+    "embedding_model": "all-MiniLM-L6-v2",
+    "method": "kmeans",
+    "perform_preprocessing": True,
+    "n_clusters": 10
+}
+
 # Function to create visualizations for the results
 def create_cluster_visualization(embeddings_2d, labels, cluster_labels=None, width=800, height=600, dpi=100):
     """Create a visualization of the clusters"""
@@ -135,6 +143,18 @@ def create_cluster_size_chart(clusters, width=800, height=400, dpi=100):
         st.error(f"Error creating cluster size chart: {str(e)}")
         return None
 
+# Function to suggest optimal batch size based on dataset size
+def suggest_batch_size(total_keywords):
+    """Suggest optimal batch size based on the total number of keywords"""
+    if total_keywords <= 1000:
+        return total_keywords  # No batching needed for small datasets
+    elif total_keywords <= 5000:
+        return 1000
+    elif total_keywords <= 20000:
+        return 2500
+    else:
+        return 5000
+
 with st.sidebar:
     st.header("Configuration")
     
@@ -142,16 +162,23 @@ with st.sidebar:
     
     model_options = ["all-MiniLM-L6-v2", "paraphrase-multilingual-MiniLM-L12-v2", "all-mpnet-base-v2"]
     embedding_model = st.selectbox("Embedding Model", model_options)
+    # Update the global parameter dictionary
+    clusterer_params["embedding_model"] = embedding_model
     
     clustering_method = st.selectbox(
         "Clustering Method", 
         ["kmeans", "dbscan", "hdbscan", "agglomerative"],
         help="KMeans is recommended for most cases"
     )
+    # Update the global parameter dictionary
+    clusterer_params["method"] = clustering_method
     
     if clustering_method in ["kmeans", "agglomerative"]:
         n_clusters = st.number_input("Number of Clusters", min_value=2, max_value=50, value=10)
         optimize_clusters = st.checkbox("Optimize number of clusters", value=False)
+        
+        # Update the global parameter dictionary
+        clusterer_params["n_clusters"] = n_clusters if not optimize_clusters else None
         
         if optimize_clusters:
             col1, col2 = st.columns(2)
@@ -164,9 +191,18 @@ with st.sidebar:
         if clustering_method == "dbscan":
             eps = st.slider("EPS Parameter", min_value=0.1, max_value=1.0, value=0.5, step=0.1)
             min_samples = st.slider("Min Samples", min_value=2, max_value=20, value=5)
+            
+            # Update the global parameter dictionary
+            clusterer_params["eps"] = eps
+            clusterer_params["min_samples"] = min_samples
+            
         else:  # HDBSCAN
             min_cluster_size = st.slider("Min Cluster Size", min_value=2, max_value=20, value=5)
             min_samples = st.slider("Min Samples", min_value=1, max_value=20, value=None)
+            
+            # Update the global parameter dictionary
+            clusterer_params["min_cluster_size"] = min_cluster_size
+            clusterer_params["min_samples"] = min_samples if min_samples else None
         
         optimize_clusters = False
         n_clusters = None
@@ -174,17 +210,24 @@ with st.sidebar:
     # Advanced Options - estas deben estar fuera del bloque condicional else
     st.subheader("Advanced Options")
     perform_preprocessing = st.checkbox("Preprocess keywords", value=True)
+    # Update the global parameter dictionary
+    clusterer_params["perform_preprocessing"] = perform_preprocessing
+    
     use_batching = st.checkbox("Use batch processing for large datasets", value=False)
     batch_size = None
+    auto_batch_size = False
     
     # Control batch_size solo si use_batching está activado
     if use_batching:
-        batch_size = st.number_input("Batch Size", min_value=100, max_value=10000, value=1000, step=100)
+        auto_batch_size = st.checkbox("Auto-adjust batch size based on dataset size", value=True)
         
-        if batch_size:
-            st.info(f"Processing will be done in batches of {batch_size} keywords")
-            if 'clusterer_params' in locals() or 'clusterer_params' in globals():
-                clusterer_params["batch_size"] = batch_size    
+        if not auto_batch_size:
+            batch_size = st.number_input("Batch Size", min_value=100, max_value=10000, value=1000, step=100)
+            
+            if batch_size:
+                st.info(f"Processing will be done in batches of {batch_size} keywords")
+        else:
+            st.info("Batch size will be automatically adjusted based on dataset size")
                 
     label_method = st.selectbox(
         "Cluster Labeling Method", 
@@ -244,31 +287,28 @@ if uploaded_file is not None:
                 keywords = []
             st.write(f"Read {len(keywords)} keywords from json file")
         
-        st.write(f"Total keywords loaded: {len(keywords)}")
+        total_keywords = len(keywords)
+        st.write(f"Total keywords loaded: {total_keywords}")
         
-        if len(keywords) > 1000:
-            st.warning(f"Large number of keywords detected ({len(keywords)}). Processing may take some time.")
+        # Auto-adjust batch size if enabled
+        if use_batching and auto_batch_size and total_keywords > 0:
+            batch_size = suggest_batch_size(total_keywords)
+            st.info(f"Auto-adjusted batch size: {batch_size} keywords")
+        
+        # Validate batch size if manually set
+        if use_batching and batch_size and not auto_batch_size:
+            if batch_size >= total_keywords:
+                st.warning(f"Batch size ({batch_size}) is larger than or equal to the total number of keywords ({total_keywords}). Batching will still work but is unnecessary.")
+        
+        if total_keywords > 1000:
+            st.warning(f"Large number of keywords detected ({total_keywords}). Processing may take some time.")
         
         if st.button("Start Clustering"):
             with st.spinner("Clustering keywords..."):
                 progress_bar = st.progress(0)
                 
                 # Initialize the clusterer with appropriate parameters
-                clusterer_params = {
-                    "embedding_model": embedding_model,
-                    "method": clustering_method,
-                    "perform_preprocessing": perform_preprocessing
-                }
-                
-                # Add method-specific parameters
-                if clustering_method in ["kmeans", "agglomerative"]:
-                    clusterer_params["n_clusters"] = n_clusters if not optimize_clusters else None
-                elif clustering_method == "dbscan":
-                    clusterer_params["eps"] = eps
-                    clusterer_params["min_samples"] = min_samples
-                elif clustering_method == "hdbscan":
-                    clusterer_params["min_cluster_size"] = min_cluster_size
-                    clusterer_params["min_samples"] = min_samples if min_samples else None
+                # We already have clusterer_params globally defined and updated
                 
                 # Initialize clusterer
                 clusterer = SemanticKeywordClusterer(**clusterer_params)
@@ -290,7 +330,7 @@ if uploaded_file is not None:
                 cluster_params["label_method"] = label_method
                 
                 # Perform clustering
-                if use_batching and batch_size:
+                if use_batching and batch_size and batch_size < total_keywords:
                     clusters = clusterer.batch_process(
                         batch_size=batch_size,
                         **cluster_params
@@ -303,7 +343,7 @@ if uploaded_file is not None:
                 # Get results
                 metrics = clusterer.get_metrics()
                 cluster_labels = clusterer.get_cluster_labels()
-                embeddings_2d, labels = clusterer.get_visualization_data()
+                embeddings_2d, labels = clusterer.get_visualization_data(method=visualization_method)
                 
                 progress_bar.progress(1.0)
                 
