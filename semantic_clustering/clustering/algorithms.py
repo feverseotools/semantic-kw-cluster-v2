@@ -283,23 +283,69 @@ def dimensionality_reduction(
     """
     if embeddings_matrix.shape[0] == 0:
         return np.array([])
+    
+    # Ensure we have at least min_samples for stable reduction
+    min_samples = max(5, n_components + 1)  # Minimum samples needed
+    if embeddings_matrix.shape[0] < min_samples:
+        logger.warning(f"Not enough samples ({embeddings_matrix.shape[0]}) for stable dimensionality reduction. Need at least {min_samples}.")
+        # For very small datasets, identity transform or simple scaling might be more appropriate
+        if n_components >= embeddings_matrix.shape[1]:
+            return embeddings_matrix  # Can't increase dimensions
+        else:
+            # Fallback to PCA which works better with small datasets
+            reducer = PCA(n_components=n_components, random_state=random_state)
+            return reducer.fit_transform(embeddings_matrix)
         
-    if method == "pca":
+    if method.lower() == "pca":
+        n_components = min(n_components, embeddings_matrix.shape[1])
         reducer = PCA(n_components=n_components, random_state=random_state)
         return reducer.fit_transform(embeddings_matrix)
         
-    elif method == "umap":
-        n_neighbors = kwargs.get("n_neighbors", 15)
-        min_dist = kwargs.get("min_dist", 0.1)
-        
-        reducer = umap.UMAP(
-            n_components=n_components,
-            n_neighbors=n_neighbors,
-            min_dist=min_dist,
-            random_state=random_state,
-            **kwargs
-        )
-        return reducer.fit_transform(embeddings_matrix)
+    elif method.lower() == "umap":
+        try:
+            # Default parameters that work well in most cases
+            default_params = {
+                "n_neighbors": min(15, embeddings_matrix.shape[0] - 1),  # Adapt to dataset size
+                "min_dist": 0.1,
+                "metric": "cosine",  # Better for text embeddings
+                "low_memory": kwargs.get("low_memory", False),
+                "n_components": n_components,
+                "random_state": random_state
+            }
+            
+            # Override defaults with user provided kwargs
+            umap_params = {**default_params, **kwargs}
+            
+            # Remove any params that aren't accepted by UMAP
+            valid_params = {
+                k: v for k, v in umap_params.items() 
+                if k in ["n_neighbors", "min_dist", "metric", "spread", 
+                         "low_memory", "n_components", "random_state", 
+                         "densmap", "set_op_mix_ratio", "local_connectivity"]
+            }
+            
+            # Check if dataset is small - adjust parameters accordingly
+            if embeddings_matrix.shape[0] < 50:
+                # For small datasets, adjust parameters for better stability
+                valid_params["n_neighbors"] = min(valid_params["n_neighbors"], embeddings_matrix.shape[0] // 2)
+                valid_params["min_dist"] = max(0.05, valid_params["min_dist"])
+                logger.info(f"Small dataset detected. Adjusted UMAP parameters: n_neighbors={valid_params['n_neighbors']}, min_dist={valid_params['min_dist']}")
+            
+            reducer = umap.UMAP(**valid_params)
+            result = reducer.fit_transform(embeddings_matrix)
+            
+            # Verify the result makes sense
+            if np.isnan(result).any() or np.isinf(result).any():
+                logger.warning("UMAP reduction produced NaN or Inf values. Falling back to PCA.")
+                reducer = PCA(n_components=n_components, random_state=random_state)
+                return reducer.fit_transform(embeddings_matrix)
+                
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in UMAP dimensionality reduction: {str(e)}. Falling back to PCA.")
+            reducer = PCA(n_components=n_components, random_state=random_state)
+            return reducer.fit_transform(embeddings_matrix)
         
     else:
         raise ValueError(f"Unsupported dimensionality reduction method: {method}")
